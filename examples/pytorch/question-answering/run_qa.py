@@ -420,7 +420,8 @@ def main():
         # left whitespace
         # TODO Determine if tokenizer can be adjusted to automatically add cls_token to the front
         # SEB: Have to manually add cls_token to the question for non-bert models
-        if "bloom" in model_args.model_name_or_path:
+        types = {"bloom", "pythia"}
+        if any(t in model_args.model_name_or_path for t in types):
             examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
         else:
             examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
@@ -526,7 +527,8 @@ def main():
         # left whitespace
         # TODO Check if there is away to automatically add cls_token in the tokenizer
         # SEB: Have to manually add cls_token to the question for non-bert models
-        if "bloom" in model_args.model_name_or_path:
+        types = {"bloom", "pythia"}
+        if any(t in model_args.model_name_or_path for t in types):
             examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
         else:
             examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
