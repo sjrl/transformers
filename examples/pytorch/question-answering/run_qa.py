@@ -24,6 +24,7 @@ import sys
 import json
 from dataclasses import dataclass, field
 from typing import Optional
+import warnings
 
 import datasets
 import evaluate
@@ -386,6 +387,10 @@ def main():
             "This example script only works for models that have a tokenizer with a cls_token_id. The model provided"
             " does not have a cls_token by default so pass one to Model Args."
         )
+
+    if tokenizer.pad_token is None:
+        warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
+        tokenizer.pad_token = tokenizer.eos_token
 
     # Tokenizer check: this script requires a fast tokenizer.
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
