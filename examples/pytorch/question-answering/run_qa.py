@@ -343,34 +343,25 @@ def main():
     # TODO Change this if statement to be more general. E.g.
     #      1. Add option to add cls_token to model_args at runtime.
     #      2. Load tokenizer as normal and check if cls_token is present, if not add it manually after loading.
-    types = {"bloom", "pythia"}
-    if any(t in model_args.model_name_or_path for t in types):
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir,
-            use_fast=True,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-            cls_token="<cls>",
-            # TODO Add this to model args and set by default.
-            #      Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right, which causes problems.
-            padding_side="right",
-            truncation_side="right",
-            # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
-            model_max_length=data_args.max_seq_length,  # TODO Check if this is really needed.
-        )
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir,
-            use_fast=True,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-            padding_side="right",
-            truncation_side="right",
-            # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
-            model_max_length=data_args.max_seq_length,
-        )
+    special_tokens = {}
+    if "bloom" in model_args.model_name_or_path.lower():
+        special_tokens = {"cls_token": "<cls>"}
+    elif "pythia" in model_args.model_name_or_path.lower():
+        special_tokens = {"cls_token": "<|cls|>", "pad_token": "<|endoftext|>"}
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=True,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+        # TODO Add this to model args and set by default.
+        #      Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right, which causes problems.
+        padding_side="right",
+        truncation_side="right",
+        # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
+        model_max_length=data_args.max_seq_length,  # TODO Check if this is really needed.
+        **special_tokens,
+    )
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
