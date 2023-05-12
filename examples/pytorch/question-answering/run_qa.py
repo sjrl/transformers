@@ -342,7 +342,8 @@ def main():
     # TODO Change this if statement to be more general. E.g.
     #      1. Add option to add cls_token to model_args at runtime.
     #      2. Load tokenizer as normal and check if cls_token is present, if not add it manually after loading.
-    if "bloom" in model_args.model_name_or_path:
+    types = {"bloom", "pythia"}
+    if any(t in model_args.model_name_or_path for t in types):
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
