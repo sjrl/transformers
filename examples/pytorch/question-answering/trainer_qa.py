@@ -34,6 +34,9 @@ class QuestionAnsweringTrainer(Trainer):
         self.post_process_function = post_process_function
 
     def evaluate(self, eval_dataset=None, eval_examples=None, ignore_keys=None, metric_key_prefix: str = "eval"):
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
         eval_dataset = self.eval_dataset if eval_dataset is None else eval_dataset
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         eval_examples = self.eval_examples if eval_examples is None else eval_examples
@@ -41,8 +44,8 @@ class QuestionAnsweringTrainer(Trainer):
         # Temporarily disable metric computation, we will do it in the loop here.
         compute_metrics = self.compute_metrics
         self.compute_metrics = None
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
         start_time = time.time()
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
         try:
             output = eval_loop(
                 eval_dataloader,
@@ -79,15 +82,16 @@ class QuestionAnsweringTrainer(Trainer):
         else:
             metrics = output.metrics
 
-        if self.args.should_log:
-            # Only the main node log the results by default
-            self.log(metrics)
+        self.log(metrics)
 
         if self.args.tpu_metrics_debug or self.args.debug:
             # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
             xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, metrics)
+
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
         return metrics
 
     def predict(self, predict_dataset, predict_examples, ignore_keys=None, metric_key_prefix: str = "test"):

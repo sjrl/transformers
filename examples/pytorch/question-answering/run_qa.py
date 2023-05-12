@@ -48,6 +48,13 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 
+# Turns on TF32 precision. Can give up to 3x throughput improvement. Need Ampere architecture (should work with 3070)
+# Then would disable the fp16 training.
+# https://huggingface.co/docs/transformers/perf_train_gpu_one#tf32
+# import torch
+# torch.backends.cuda.matmul.allow_tf32 = True
+
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.30.0.dev0")
 
@@ -229,7 +236,7 @@ def main():
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_qa", model_args, data_args)
+    # send_example_telemetry("run_qa", model_args, data_args)
 
     # Setup logging
     logging.basicConfig(
@@ -310,6 +317,12 @@ def main():
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+
+    # Some QA datasets (e.g. GermanQuad) only has a test set and no validation set.
+    # So we copy to validation so we can track metrics during training.
+    if training_args.do_eval and "validation" not in raw_datasets:
+        raw_datasets["validation"] = raw_datasets["test"]
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -324,13 +337,36 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=True,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
+    # TODO Change this if statement to be more general. E.g.
+    #      1. Add option to add cls_token to model_args at runtime.
+    #      2. Load tokenizer as normal and check if cls_token is present, if not add it manually after loading.
+    if "bloom" in model_args.model_name_or_path:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=True,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+            cls_token="<cls>",
+            # TODO Add this to model args and set by default.
+            #      Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right, which causes problems.
+            padding_side="right",
+            truncation_side="right",
+            # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
+            model_max_length=data_args.max_seq_length,  # TODO Check if this is really needed.
+        )
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=True,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+            padding_side="right",
+            truncation_side="right",
+            # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
+            model_max_length=data_args.max_seq_length,
+        )
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -339,6 +375,14 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+
+    # TODO Add check for padding_side and truncation_side consistency?
+
+    if tokenizer.cls_token_id is None:
+        raise ValueError(
+            "This example script only works for models that have a tokenizer with a cls_token_id. The model provided"
+            " does not have a cls_token by default so pass one to Model Args."
+        )
 
     # Tokenizer check: this script requires a fast tokenizer.
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
@@ -360,7 +404,7 @@ def main():
     context_column_name = "context" if "context" in column_names else column_names[1]
     answer_column_name = "answers" if "answers" in column_names else column_names[2]
 
-    # Padding side determines if we do (question|context) or (context|question).
+    # Padding side determines if we do (question|context) -> padding on right or (context|question) -> padding on left.
     pad_on_right = tokenizer.padding_side == "right"
 
     if data_args.max_seq_length > tokenizer.model_max_length:
@@ -375,7 +419,12 @@ def main():
         # Some of the questions have lots of whitespace on the left, which is not useful and will make the
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
-        examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+        # TODO Determine if tokenizer can be adjusted to automatically add cls_token to the front
+        # SEB: Have to manually add cls_token to the question for non-bert models
+        if "bloom" in model_args.model_name_or_path:
+            examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
+        else:
+            examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
@@ -476,7 +525,12 @@ def main():
         # Some of the questions have lots of whitespace on the left, which is not useful and will make the
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
-        examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+        # TODO Check if there is away to automatically add cls_token in the tokenizer
+        # SEB: Have to manually add cls_token to the question for non-bert models
+        if "bloom" in model_args.model_name_or_path:
+            examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
+        else:
+            examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
