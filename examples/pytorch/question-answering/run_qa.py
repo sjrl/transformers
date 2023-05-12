@@ -21,6 +21,7 @@ Fine-tuning the library models for question answering using a slightly adapted v
 import logging
 import os
 import sys
+import json
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -42,6 +43,7 @@ from transformers import (
     TrainingArguments,
     default_data_collator,
     set_seed,
+    TrainerCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -657,6 +659,14 @@ def main():
     def compute_metrics(p: EvalPrediction):
         return metric.compute(predictions=p.predictions, references=p.label_ids)
 
+    class SaveLogCallback(TrainerCallback):
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if state.is_local_process_zero:
+                output = {**logs, **{"step": state.global_step}}
+                path = os.path.join(args.output_dir, f"logs.jsonl")
+                with open(path, "a") as f:
+                    f.write(json.dumps(output, sort_keys=True) + '\n')
+
     # Initialize our Trainer
     trainer = QuestionAnsweringTrainer(
         model=model,
@@ -668,6 +678,7 @@ def main():
         data_collator=data_collator,
         post_process_function=post_processing_function,
         compute_metrics=compute_metrics,
+        callbacks=[SaveLogCallback],
     )
 
     # Training
