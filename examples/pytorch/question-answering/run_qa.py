@@ -339,6 +339,7 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        use_cache=True if not training_args.gradient_checkpointing else False,
     )
     # TODO Change this if statement to be more general. E.g.
     #      1. Add option to add cls_token to model_args at runtime.
