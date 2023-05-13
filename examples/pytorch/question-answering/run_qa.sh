@@ -5,11 +5,11 @@
 # --model_name_or_path facebook/opt-350m \
 # --model_name_or_path facebook/opt-125m \
 # --model_name_or_path bigscience/bloomz-560m \
-mkdir experiments/pythia-410m/$1
+mkdir experiments/"$1"/"$2"
 nohup python run_qa.py \
-  --model_name_or_path EleutherAI/pythia-410m \
+  --model_name_or_path EleutherAI/"$1" \
   --dataset_name squad_v2 \
-  --output_dir experiments/pythia-410m/$1/model/ \
+  --output_dir experiments/"$1"/"$2"/model/ \
   --version_2_with_negative True \
   --max_seq_length 512 \
   --doc_stride 128 \
@@ -36,7 +36,7 @@ nohup python run_qa.py \
   --overwrite_output_dir False \
   --optim adamw_bnb_8bit \
   --pad_to_max_length False \
-  --gradient_checkpointing True > experiments/pythia-410m/$1/run.log 2>&1 &
+  --gradient_checkpointing True > experiments/"$1"/"$2"/run.log 2>&1 &
   # --metric_for_best_model eval_f1 \
   # --greater_is_better True \
   #  --fp16 \
