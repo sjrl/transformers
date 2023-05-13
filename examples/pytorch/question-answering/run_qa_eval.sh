@@ -4,7 +4,7 @@
 python run_qa.py \
   --model_name_or_path EleutherAI/"$1" \
   --dataset_name squad_v2 \
-  --output_dir experiments/"$1"/"$2"/model/ \
+  --output_dir experiments/"$1"/"$2"/eval_squad2/ \
   --version_2_with_negative True \
   --max_seq_length 384 \
   --doc_stride 128 \
@@ -19,7 +19,7 @@ python run_qa.py \
 python run_qa.py \
   --model_name_or_path EleutherAI/"$1" \
   --dataset_name squad \
-  --output_dir experiments/"$1"/"$2"/model/ \
+  --output_dir experiments/"$1"/"$2"/eval_squad/ \
   --version_2_with_negative False \
   --max_seq_length 384 \
   --doc_stride 128 \
