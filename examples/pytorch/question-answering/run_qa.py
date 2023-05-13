@@ -629,6 +629,7 @@ def main():
     )
 
     # Post-processing:
+    # TODO Inspect what is present in features
     def post_processing_function(examples, features, predictions, stage="eval"):
         # Post-processing: we match the start logits and end logits to answers in the original context.
         predictions = postprocess_qa_predictions(
@@ -656,6 +657,7 @@ def main():
 
     metric = evaluate.load("squad_v2" if data_args.version_2_with_negative else "squad")
 
+    # TODO Add validation loss
     def compute_metrics(p: EvalPrediction):
         return metric.compute(predictions=p.predictions, references=p.label_ids)
 

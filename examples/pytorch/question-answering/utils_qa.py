@@ -281,9 +281,9 @@ def postprocess_qa_predictions_with_beam_search(
             The maximum length of an answer that can be generated. This is needed because the start and end predictions
             are not conditioned on one another.
         start_n_top (:obj:`int`, `optional`, defaults to 5):
-            The number of top start logits too keep when searching for the :obj:`n_best_size` predictions.
+            The number of top start logits to keep when searching for the :obj:`n_best_size` predictions.
         end_n_top (:obj:`int`, `optional`, defaults to 5):
-            The number of top end logits too keep when searching for the :obj:`n_best_size` predictions.
+            The number of top end logits to keep when searching for the :obj:`n_best_size` predictions.
         output_dir (:obj:`str`, `optional`):
             If provided, the dictionaries of predictions, n_best predictions (with their scores and logits) and, if
             :obj:`version_2_with_negative=True`, the dictionary of the scores differences between best and null
