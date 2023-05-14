@@ -117,6 +117,7 @@ def postprocess_qa_predictions(
             token_is_max_context = features[feature_index].get("token_is_max_context", None)
 
             # Update minimum null prediction.
+            # NOTE: This assumes that the cls token has been appended to the beginning of the text sequence
             feature_null_score = start_logits[0] + end_logits[0]
             if min_null_prediction is None or min_null_prediction["score"] > feature_null_score:
                 min_null_prediction = {

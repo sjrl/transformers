@@ -344,6 +344,7 @@ def main():
     # TODO Change this if statement to be more general. E.g.
     #      1. Add option to add cls_token to model_args at runtime.
     #      2. Load tokenizer as normal and check if cls_token is present, if not add it manually after loading.
+    # Need cls_token to be a standalone token to not hijack the use of another token
     special_tokens = {}
     if "bloom" in model_args.model_name_or_path.lower():
         special_tokens = {"cls_token": "<cls>"}
@@ -419,13 +420,18 @@ def main():
         # Some of the questions have lots of whitespace on the left, which is not useful and will make the
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
+        examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+
         # TODO Determine if tokenizer can be adjusted to automatically add cls_token to the front
-        # SEB: Have to manually add cls_token to the question for non-bert models
+        # SEB: Have to manually add cls_token and eos_token (using instead of sep_token) to the question for
+        # non-bert models.
+        # SEB: Also to be consistent adding a eos_token (using instead of sep_token) at the end of the context.
         types = {"bloom", "pythia"}
         if any(t in model_args.model_name_or_path for t in types):
-            examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
-        else:
-            examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+            examples[question_column_name] = [
+                tokenizer.cls_token + q + tokenizer.eos_token for q in examples[question_column_name]
+            ]
+            examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
@@ -526,13 +532,17 @@ def main():
         # Some of the questions have lots of whitespace on the left, which is not useful and will make the
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
-        # TODO Check if there is away to automatically add cls_token in the tokenizer
-        # SEB: Have to manually add cls_token to the question for non-bert models
+        examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+
+        # SEB: Have to manually add cls_token and eos_token (using instead of sep_token) to the question for
+        # non-bert models.
+        # SEB: Also to be consistent adding a eos_token (using instead of sep_token) at the end of the context.
         types = {"bloom", "pythia"}
         if any(t in model_args.model_name_or_path for t in types):
-            examples[question_column_name] = [tokenizer.cls_token + q.lstrip() for q in examples[question_column_name]]
-        else:
-            examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+            examples[question_column_name] = [
+                tokenizer.cls_token + q + tokenizer.eos_token for q in examples[question_column_name]
+            ]
+            examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
