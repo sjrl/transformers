@@ -2020,11 +2020,11 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
         self.encoder.set_input_embeddings(new_embeddings)
         self.decoder.set_input_embeddings(new_embeddings)
 
-    # def set_output_embeddings(self, new_embeddings):
-    #     self.qa_outputs = new_embeddings
-    #
-    # def get_output_embeddings(self):
-    #     return self.qa_outputs
+    def set_output_embeddings(self, new_embeddings):
+        self.qa_outputs = new_embeddings
+
+    def get_output_embeddings(self):
+        return self.qa_outputs
 
     def get_encoder(self):
         return self.encoder

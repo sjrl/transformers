@@ -1711,7 +1711,7 @@ class BartForQuestionAnswering(BartPretrainedModel):
             decoder_hidden_states=outputs.decoder_hidden_states,
             decoder_attentions=outputs.decoder_attentions,
             cross_attentions=outputs.cross_attentions,
-            encoder_last_hidden_state=outputs.encoder_last_hidden_state,
+            encoder_last_hidden_state=outputs.encoder_last_hidden_state if output_hidden_states else None,
             encoder_hidden_states=outputs.encoder_hidden_states,
             encoder_attentions=outputs.encoder_attentions,
         )
