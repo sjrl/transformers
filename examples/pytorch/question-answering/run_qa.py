@@ -341,29 +341,33 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
     )
-    # TODO Change this if statement to be more general. E.g.
-    #      1. Add option to add cls_token to model_args at runtime.
-    #      2. Load tokenizer as normal and check if cls_token is present, if not add it manually after loading.
-    # Need cls_token to be a standalone token to not hijack the use of another token
-    special_tokens = {}
-    if "bloom" in model_args.model_name_or_path.lower():
-        special_tokens = {"cls_token": "<cls>"}
-    elif "pythia" in model_args.model_name_or_path.lower():
-        special_tokens = {"cls_token": "<|cls|>", "pad_token": "<|endoftext|>"}
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         use_fast=True,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
-        # TODO Add this to model args and set by default.
-        #      Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right, which causes problems.
-        padding_side="right",
-        truncation_side="right",
         # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
         model_max_length=data_args.max_seq_length,  # TODO Check if this is really needed.
-        **special_tokens,
     )
+    if not tokenizer.cls_token:
+        # Need cls_token to be a standalone token to not hijack the use of another token
+        warnings.warn(
+            "This example script only works for models that have a tokenizer with a cls_token. The model provided"
+            " does not have a cls_token by default so we add one using"
+            " tokenizer.add_special_tokens({'cls_token': '<cls>'})."
+        )
+        num_new_tokens = tokenizer.add_special_tokens({"cls_token": "<cls>"})
+
+    # Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right,
+    # which causes problems.
+    if tokenizer.padding_side != tokenizer.truncation_side:
+        warnings.warn(
+            "This example script works best if the padding_side and truncation_side match otherwise examples with"
+            " long contexts will cause the question to be truncated. Setting truncation_side equal to padding_side."
+        )
+        tokenizer.truncation_side = tokenizer.padding_side
+
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -372,14 +376,11 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-
-    # TODO Add check for padding_side and truncation_side consistency?
-
-    if tokenizer.cls_token_id is None:
-        raise ValueError(
-            "This example script only works for models that have a tokenizer with a cls_token_id. The model provided"
-            " does not have a cls_token by default so pass one to Model Args."
-        )
+    # TODO Might be missing an embedding for special tokens. Doesn't seem to be generally the case.
+    #      Some models seem to have an extra amount of embeddings that aren't used (e.g. pythia, deberta-v3)
+    # When adding new tokens to the vocabulary, you should make sure to also resize the token embedding
+    # matrix of the model so that its embedding matrix matches the tokenizer.
+    # In order to do that, use the [`~PreTrainedModel.resize_token_embeddings`] method.
 
     if tokenizer.pad_token is None:
         warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
@@ -452,6 +453,8 @@ def main():
         sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
         # The offset mappings will give us a map from token to character position in the original context. This will
         # help us compute the start_positions and end_positions.
+        # TODO offset_mapping is "incorrect" for gptneox tokenizers.
+        #      Currently it will count cls_token as part of the mapping instead of assigning it (0,0)
         offset_mapping = tokenized_examples.pop("offset_mapping")
 
         # Let's label those examples!
@@ -486,6 +489,10 @@ def main():
                 # End token index of the current span in the text.
                 token_end_index = len(input_ids) - 1
                 while sequence_ids[token_end_index] != (1 if pad_on_right else 0):
+                    token_end_index -= 1
+
+                # For GPTNeoX, Bloom special tokens are counted in offsets and sequence_ids so shift token_end_index
+                if input_ids[token_end_index] == tokenizer.eos_token_id:
                     token_end_index -= 1
 
                 # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
