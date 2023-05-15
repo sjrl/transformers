@@ -428,11 +428,14 @@ def main():
         # non-bert models.
         # SEB: Also to be consistent adding a eos_token (using instead of sep_token) at the end of the context.
         types = {"bloom", "pythia"}
-        if any(t in model_args.model_name_or_path for t in types):
+        if any(t in model_args.model_name_or_path.lower() for t in types):
             examples[question_column_name] = [
                 tokenizer.cls_token + q + tokenizer.eos_token for q in examples[question_column_name]
             ]
             examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
+
+        if "t5" in model_args.model_name_or_path.lower():
+            examples[question_column_name] = [tokenizer.cls_token + q for q in examples[question_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
@@ -491,9 +494,9 @@ def main():
                 while sequence_ids[token_end_index] != (1 if pad_on_right else 0):
                     token_end_index -= 1
 
-                # For GPTNeoX, Bloom special tokens are counted in offsets and sequence_ids so shift token_end_index
-                if input_ids[token_end_index] == tokenizer.eos_token_id:
-                    token_end_index -= 1
+                # # For GPTNeoX, Bloom special tokens are counted in offsets and sequence_ids so shift token_end_index
+                # if input_ids[token_end_index] == tokenizer.eos_token_id:
+                #     token_end_index -= 1
 
                 # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
                 if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
@@ -550,6 +553,9 @@ def main():
                 tokenizer.cls_token + q + tokenizer.eos_token for q in examples[question_column_name]
             ]
             examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
+
+        if "t5" in model_args.model_name_or_path.lower():
+            examples[question_column_name] = [tokenizer.cls_token + q for q in examples[question_column_name]]
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
