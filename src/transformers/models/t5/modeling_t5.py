@@ -1951,7 +1951,7 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
 
     def __init__(self, config: T5Config):
         super().__init__(config)
-        self.model = T5Model(config)
+        self.transformer = T5Model(config)
         self.num_labels = config.num_labels
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
