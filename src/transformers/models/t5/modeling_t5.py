@@ -1453,6 +1453,15 @@ class T5Model(T5PreTrainedModel):
         >>> outputs = model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
         >>> last_hidden_states = outputs.last_hidden_state
         ```"""
+        if decoder_input_ids is None and decoder_inputs_embeds is None:
+            if input_ids is None:
+                raise ValueError(
+                    "If no `decoder_input_ids` or `decoder_inputs_embeds` are "
+                    "passed, `input_ids` cannot be `None`. Please pass either "
+                    "`input_ids` or `decoder_input_ids` or `decoder_inputs_embeds`."
+                )
+            decoder_input_ids = self._shift_right(input_ids)
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -2010,7 +2019,7 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
         if start_positions is not None and end_positions is not None:
             use_cache = False
 
-        outputs = self.model(
+        outputs = self.transformer(
             input_ids,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
