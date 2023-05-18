@@ -349,7 +349,6 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
-        torch_dtype=model_args.torch_dtype,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -383,6 +382,11 @@ def main():
         warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
         tokenizer.pad_token = tokenizer.eos_token
 
+    torch_dtypes = {
+        'bfloat16': torch.bfloat16,
+        'float16': torch.float16,
+        'float32': torch.float32,
+    }
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -390,6 +394,7 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
     )
     # TODO Might be missing an embedding for special tokens. Doesn't seem to be generally the case.
     #      Some models seem to have an extra amount of embeddings that aren't used (e.g. pythia, deberta-v3)
