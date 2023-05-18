@@ -107,6 +107,23 @@ class ModelArguments:
             )
         },
     )
+    load_in_8bit: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Load model in 8 bit."
+            )
+        },
+    )
+    use_peft: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Use LoRA training enabled by peft."
+            )
+        },
+    )
+
 
 
 @dataclass
@@ -382,6 +399,13 @@ def main():
         warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
         tokenizer.pad_token = tokenizer.eos_token
 
+    if model_args.use_peft:
+        try:
+            import peft
+        except ImportError:
+            logger.warning("Peft is not installed so setting use_peft=False")
+            model_args.use_peft = False
+
     torch_dtypes = {
         'bfloat16': torch.bfloat16,
         'float16': torch.float16,
@@ -395,7 +419,42 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
+        load_in_8bit=model_args.load_in_8bit,
+        device_map="auto"
     )
+
+    if model_args.use_peft:
+        from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
+
+        target_modules_mapping = {
+            "bert": ["query", "value"],
+            "t5": ["q", "v"]
+        }
+        target_modules = None
+        for key in target_modules_mapping:
+            if key in model_args.model_name_or_path:
+                target_modules = target_modules_mapping[key]
+        if target_modules is None:
+            raise ValueError("Could not determine the target_modules to use in LoRA")
+
+        # Define LoRA Config
+        lora_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            # These target modules need to be updated based on model architecture.
+            # E.g. self.q and self.v exist for T5 but for Bert the equivalent would be self.query and self.value.
+            target_modules=target_modules,
+            lora_dropout=0.05,
+            bias="none",
+            task_type=TaskType.QUESTION_ANS
+        )
+        # prepare int-8 model for training
+        model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+
+        # add LoRA adaptor
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+
     # TODO Might be missing an embedding for special tokens. Doesn't seem to be generally the case.
     #      Some models seem to have an extra amount of embeddings that aren't used (e.g. pythia, deberta-v3)
     # When adding new tokens to the vocabulary, you should make sure to also resize the token embedding
