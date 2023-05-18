@@ -164,9 +164,8 @@ def load_tf_weights_in_t5(model, config, tf_checkpoint_path):
             logger.info(f"Transposing numpy weight of shape {array.shape} for {name}")
             array = np.transpose(array)
         try:
-            assert (
-                pointer.shape == array.shape
-            ), f"Pointer shape {pointer.shape} and array shape {array.shape} mismatched"
+            if pointer.shape != array.shape:
+                raise ValueError(f"Pointer shape {pointer.shape} and array shape {array.shape} mismatched")
         except AssertionError as e:
             e.args += (pointer.shape, array.shape)
             raise
@@ -247,7 +246,7 @@ class T5LayerNorm(nn.Module):
 
     def forward(self, hidden_states):
         # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
-        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
+        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus variance is calculated
         # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
         # half-precision inputs is done in fp32
 
@@ -474,9 +473,10 @@ class T5Attention(nn.Module):
         real_seq_length = seq_length
 
         if past_key_value is not None:
-            assert (
-                len(past_key_value) == 2
-            ), f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+            if len(past_key_value) != 2:
+                raise ValueError(
+                    f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+                )
             real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
 
         key_length = real_seq_length if key_value_states is None else key_value_states.shape[1]
@@ -849,10 +849,11 @@ class T5PreTrainedModel(PreTrainedModel):
         decoder_start_token_id = self.config.decoder_start_token_id
         pad_token_id = self.config.pad_token_id
 
-        assert decoder_start_token_id is not None, (
-            "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id."
-            " See T5 docs for more information"
-        )
+        if decoder_start_token_id is None:
+            raise ValueError(
+                "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id."
+                "See T5 docs for more information."
+            )
 
         # shift inputs to the right
         if is_torch_fx_proxy(input_ids):
@@ -864,7 +865,8 @@ class T5PreTrainedModel(PreTrainedModel):
             shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
             shifted_input_ids[..., 0] = decoder_start_token_id
 
-        assert pad_token_id is not None, "self.model.config.pad_token_id has to be defined."
+        if pad_token_id is None:
+            raise ValueError("self.model.config.pad_token_id has to be defined.")
         # replace possible -100 values in labels by `pad_token_id`
         shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
@@ -982,7 +984,8 @@ class T5Stack(T5PreTrainedModel):
             raise ValueError(f"You have to specify either {err_msg_prefix}input_ids or {err_msg_prefix}inputs_embeds")
 
         if inputs_embeds is None:
-            assert self.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
+            if self.embed_tokens is None:
+                raise ValueError("You have to initialize the model with valid token embeddings")
             inputs_embeds = self.embed_tokens(input_ids)
 
         batch_size, seq_length = input_shape
@@ -991,7 +994,8 @@ class T5Stack(T5PreTrainedModel):
         mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
 
         if use_cache is True:
-            assert self.is_decoder, f"`use_cache` can only be set to `True` if {self} is used as a decoder"
+            if not self.is_decoder:
+                raise ValueError(f"`use_cache` can only be set to `True` if {self} is used as a decoder")
 
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
@@ -1827,8 +1831,14 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                     layer_past_state.index_select(0, beam_idx.to(layer_past_state.device)),
                 )
 
-            assert reordered_layer_past_states[0].shape == layer_past_states[0].shape
-            assert len(reordered_layer_past_states) == len(layer_past_states)
+            if reordered_layer_past_states[0].shape != layer_past_states[0].shape:
+                raise ValueError(
+                    f"reordered_layer_past_states[0] shape {reordered_layer_past_states[0].shape} and layer_past_states[0] shape {layer_past_states[0].shape} mismatched"
+                )
+            if len(reordered_layer_past_states) != len(layer_past_states):
+                raise ValueError(
+                    f"length of reordered_layer_past_states {len(reordered_layer_past_states)} and length of layer_past_states {len(layer_past_states)} mismatched"
+                )
 
             reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
         return reordered_decoder_past
@@ -2066,56 +2076,3 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
             encoder_hidden_states=outputs.encoder_hidden_states,
             encoder_attentions=outputs.encoder_attentions,
         )
-
-    # def prepare_inputs_for_generation(
-    #     self,
-    #     input_ids,
-    #     past_key_values=None,
-    #     attention_mask=None,
-    #     head_mask=None,
-    #     decoder_head_mask=None,
-    #     decoder_attention_mask=None,
-    #     cross_attn_head_mask=None,
-    #     use_cache=None,
-    #     encoder_outputs=None,
-    #     **kwargs,
-    # ):
-    #     # cut decoder_input_ids if past is used
-    #     if past_key_values is not None:
-    #         input_ids = input_ids[:, -1:]
-    #
-    #     return {
-    #         "decoder_input_ids": input_ids,
-    #         "past_key_values": past_key_values,
-    #         "encoder_outputs": encoder_outputs,
-    #         "attention_mask": attention_mask,
-    #         "head_mask": head_mask,
-    #         "decoder_head_mask": decoder_head_mask,
-    #         "decoder_attention_mask": decoder_attention_mask,
-    #         "cross_attn_head_mask": cross_attn_head_mask,
-    #         "use_cache": use_cache,
-    #     }
-
-    # def _reorder_cache(self, past_key_values, beam_idx):
-    #     # if decoder past is not included in output
-    #     # speedy decoding is disabled and no need to reorder
-    #     if past_key_values is None:
-    #         logger.warning("You might want to consider setting `use_cache=True` to speed up decoding")
-    #         return past_key_values
-    #
-    #     reordered_decoder_past = ()
-    #     for layer_past_states in past_key_values:
-    #         # get the correct batch idx from layer past batch dim
-    #         # batch dim of `past` is at 2nd position
-    #         reordered_layer_past_states = ()
-    #         for layer_past_state in layer_past_states:
-    #             # need to set correct `past` for each of the four key / value states
-    #             reordered_layer_past_states = reordered_layer_past_states + (
-    #                 layer_past_state.index_select(0, beam_idx.to(layer_past_state.device)),
-    #             )
-    #
-    #         assert reordered_layer_past_states[0].shape == layer_past_states[0].shape
-    #         assert len(reordered_layer_past_states) == len(layer_past_states)
-    #
-    #         reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
-    #     return reordered_decoder_past

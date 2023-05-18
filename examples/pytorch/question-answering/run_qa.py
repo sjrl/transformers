@@ -28,6 +28,7 @@ import warnings
 
 import datasets
 import evaluate
+import torch
 from datasets import load_dataset
 from trainer_qa import QuestionAnsweringTrainer
 from utils_qa import postprocess_qa_predictions
@@ -95,6 +96,14 @@ class ModelArguments:
             "help": (
                 "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
                 "with private models)."
+            )
+        },
+    )
+    torch_dtype: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Torch dtype to load the model in."
             )
         },
     )
@@ -340,6 +349,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
+        torch_dtype=model_args.torch_dtype,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -350,14 +360,15 @@ def main():
         # Adding a model_max_length b/c default is 1000000000000000019884624838656 by default
         model_max_length=data_args.max_seq_length,  # TODO Check if this is really needed.
     )
+
+    # Add cls_token to the tokenizer if it is missing. Needed for models that can predict no answer.
     if not tokenizer.cls_token:
-        # Need cls_token to be a standalone token to not hijack the use of another token
         warnings.warn(
             "This example script only works for models that have a tokenizer with a cls_token. The model provided"
             " does not have a cls_token by default so we add one using"
             " tokenizer.add_special_tokens({'cls_token': '<cls>'})."
         )
-        num_new_tokens = tokenizer.add_special_tokens({"cls_token": "<cls>"})
+        _ = tokenizer.add_special_tokens({"cls_token": "<cls>"})
 
     # Needed b/c e.g. bloom sets padding_side to left by default, but truncation_side to right,
     # which causes problems.
@@ -367,6 +378,10 @@ def main():
             " long contexts will cause the question to be truncated. Setting truncation_side equal to padding_side."
         )
         tokenizer.truncation_side = tokenizer.padding_side
+
+    if tokenizer.pad_token is None:
+        warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
+        tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
@@ -381,10 +396,6 @@ def main():
     # When adding new tokens to the vocabulary, you should make sure to also resize the token embedding
     # matrix of the model so that its embedding matrix matches the tokenizer.
     # In order to do that, use the [`~PreTrainedModel.resize_token_embeddings`] method.
-
-    if tokenizer.pad_token is None:
-        warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
-        tokenizer.pad_token = tokenizer.eos_token
 
     # Tokenizer check: this script requires a fast tokenizer.
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
@@ -423,10 +434,8 @@ def main():
         # left whitespace
         examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
 
-        # TODO Determine if tokenizer can be adjusted to automatically add cls_token to the front
-        # SEB: Have to manually add cls_token and eos_token (using instead of sep_token) to the question for
-        # non-bert models.
-        # SEB: Also to be consistent adding a eos_token (using instead of sep_token) at the end of the context.
+        # Need to manually add cls_token and eos_token (using instead of sep_token) to the question for certain model
+        # types. To copy bert tokenization adding a eos_token at the end of the context.
         types = {"bloom", "pythia"}
         if any(t in model_args.model_name_or_path.lower() for t in types):
             examples[question_column_name] = [
@@ -434,6 +443,7 @@ def main():
             ]
             examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
 
+        # T5 tokenizer is only missing the cls_token so it's added here
         if "t5" in model_args.model_name_or_path.lower():
             examples[question_column_name] = [tokenizer.cls_token + q for q in examples[question_column_name]]
 
@@ -544,9 +554,8 @@ def main():
         # left whitespace
         examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
 
-        # SEB: Have to manually add cls_token and eos_token (using instead of sep_token) to the question for
-        # non-bert models.
-        # SEB: Also to be consistent adding a eos_token (using instead of sep_token) at the end of the context.
+        # Need to manually add cls_token and eos_token (using instead of sep_token) to the question for certain model
+        # types. To copy bert tokenization adding a eos_token at the end of the context.
         types = {"bloom", "pythia"}
         if any(t in model_args.model_name_or_path for t in types):
             examples[question_column_name] = [
@@ -554,6 +563,7 @@ def main():
             ]
             examples[context_column_name] = [c + tokenizer.eos_token for c in examples[context_column_name]]
 
+        # T5 tokenizer is only missing the cls_token so it's added here
         if "t5" in model_args.model_name_or_path.lower():
             examples[question_column_name] = [tokenizer.cls_token + q for q in examples[question_column_name]]
 
