@@ -28,6 +28,7 @@ import warnings
 
 import datasets
 import evaluate
+import torch
 from datasets import load_dataset
 from trainer_qa import QuestionAnsweringTrainer
 from utils_qa import postprocess_qa_predictions
@@ -88,6 +89,14 @@ class ModelArguments:
             "help": (
                 "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
                 "with private models)."
+            )
+        },
+    )
+    torch_dtype: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Torch dtype to load the model in."
             )
         },
     )
@@ -333,6 +342,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
+        torch_dtype=model_args.torch_dtype,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
