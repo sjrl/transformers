@@ -924,6 +924,7 @@ class DebertaV2PreTrainedModel(PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["position_ids"]
     _keys_to_ignore_on_load_unexpected = ["position_embeddings"]
     supports_gradient_checkpointing = True
+    _no_split_modules = [r"DebertaV2Layer"]
 
     def _init_weights(self, module):
         """Initialize the weights."""

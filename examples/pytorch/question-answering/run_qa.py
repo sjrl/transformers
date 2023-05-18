@@ -420,7 +420,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
         load_in_8bit=model_args.load_in_8bit,
-        # device_map="auto"  # TODO Bert doesn't support
+        device_map="auto"
     )
 
     if model_args.use_peft:
