@@ -411,6 +411,8 @@ def main():
         'float16': torch.float16,
         'float32': torch.float32,
     }
+    if model_args.load_in_8bit:
+        logger.info("Loading in 8bit")
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -420,20 +422,23 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
         load_in_8bit=model_args.load_in_8bit,
-        device_map="auto"
+        device_map={"": 0}
     )
 
     if model_args.use_peft:
+        logger.info("Using PEFT for LoRA training.")
         from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
 
         target_modules_mapping = {
+            "deberta": ["query_proj", "value_proj", "pos_query_proj"],
             "bert": ["query", "value"],
-            "t5": ["q", "v"]
+            "t5": ["q", "v"],
         }
         target_modules = None
         for key in target_modules_mapping:
             if key in model_args.model_name_or_path:
                 target_modules = target_modules_mapping[key]
+                break
         if target_modules is None:
             raise ValueError("Could not determine the target_modules to use in LoRA")
 
