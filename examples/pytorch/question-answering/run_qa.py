@@ -449,7 +449,12 @@ def main():
             task_type=TaskType.QUESTION_ANS
         )
         # prepare int-8 model for training
-        model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        if model_args.load_in_8bit:
+            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        # Kind of a weird if check, but model.is_gradient_checkpointing needs to be set to True before the peft model
+        # is loaded
+        elif training_args.gradient_checkpointing:
+            model.gradient_checkpointing_enable()
 
         # add LoRA adaptor
         model = get_peft_model(model, lora_config)
