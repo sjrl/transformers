@@ -429,18 +429,19 @@ def main():
         logger.info("Using PEFT for LoRA training.")
         from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
 
-        target_modules_mapping = {
-            "deberta": ["query_proj", "value_proj", "pos_query_proj"],
-            "bert": ["query", "value"],
-            "t5": ["q", "v"],
-        }
-        target_modules = None
-        for key in target_modules_mapping:
-            if key in model_args.model_name_or_path:
-                target_modules = target_modules_mapping[key]
-                break
-        if target_modules is None:
-            raise ValueError("Could not determine the target_modules to use in LoRA")
+        # TODO Can leave target_modules_mapping as None for now. There is an auto detection in peft.
+        # target_modules_mapping = {
+        #     "deberta": ["query_proj", "value_proj", "pos_query_proj"],
+        #     "bert": ["query", "value"],
+        #     "t5": ["q", "v"],
+        # }
+        # target_modules = None
+        # for key in target_modules_mapping:
+        #     if key in model_args.model_name_or_path:
+        #         target_modules = target_modules_mapping[key]
+        #         break
+        # if target_modules is None:
+        #     raise ValueError("Could not determine the target_modules to use in LoRA")
 
         # Define LoRA Config
         lora_config = LoraConfig(
@@ -448,7 +449,7 @@ def main():
             lora_alpha=32,
             # These target modules need to be updated based on model architecture.
             # E.g. self.q and self.v exist for T5 but for Bert the equivalent would be self.query and self.value.
-            target_modules=target_modules,
+            target_modules=None,
             lora_dropout=0.05,
             bias="none",
             task_type=TaskType.QUESTION_ANS
