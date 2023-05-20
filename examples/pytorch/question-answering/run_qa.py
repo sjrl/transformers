@@ -101,27 +101,27 @@ class ModelArguments:
     )
     torch_dtype: Optional[str] = field(
         default=None,
-        metadata={
-            "help": (
-                "Torch dtype to load the model in."
-            )
-        },
+        metadata={"help": "Torch dtype to load the model in."},
     )
     load_in_8bit: bool = field(
         default=False,
-        metadata={
-            "help": (
-                "Load model in 8 bit."
-            )
-        },
+        metadata={"help": "Load model in 8 bit."},
     )
-    use_peft: bool = field(
+    use_lora: bool = field(
         default=False,
-        metadata={
-            "help": (
-                "Use LoRA training enabled by peft."
-            )
-        },
+        metadata={"help": "Use LoRA training enabled by peft."},
+    )
+    lora_r: int = field(
+        default=None,
+        metadata={"help": "Set the r parameter for LoRA."},
+    )
+    lora_alpha: int = field(
+        default=None,
+        metadata={"help": "Set the alpha parameter for LoRA."},
+    )
+    lora_dropout: float = field(
+        default=None,
+        metadata={"help": "Set dropout parameter for LoRA."},
     )
 
 
@@ -399,12 +399,12 @@ def main():
         warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
         tokenizer.pad_token = tokenizer.eos_token
 
-    if model_args.use_peft:
+    if model_args.use_lora:
         try:
             import peft
         except ImportError:
             logger.warning("Peft is not installed so setting use_peft=False")
-            model_args.use_peft = False
+            model_args.use_lora = False
 
     torch_dtypes = {
         'bfloat16': torch.bfloat16,
@@ -425,7 +425,7 @@ def main():
         device_map={"": 0}
     )
 
-    if model_args.use_peft:
+    if model_args.use_lora:
         logger.info("Using PEFT for LoRA training.")
         from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
 
@@ -445,10 +445,10 @@ def main():
 
         # Define LoRA Config
         lora_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
+            r=model_args.lora_r if model_args.lora_r else 8,
+            lora_alpha=model_args.lora_alpha if model_args.lora_alpha else 32,
             target_modules=target_modules,
-            lora_dropout=0.05,
+            lora_dropout=model_args.lora_dropout if model_args.lora_dropout else 0.1,
             bias="none",
             task_type=TaskType.QUESTION_ANS
         )
@@ -735,7 +735,6 @@ def main():
     )
 
     # Post-processing:
-    # TODO Inspect what is present in features
     def post_processing_function(examples, features, predictions, stage="eval"):
         # Post-processing: we match the start logits and end logits to answers in the original context.
         predictions = postprocess_qa_predictions(

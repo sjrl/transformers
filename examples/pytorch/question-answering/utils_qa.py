@@ -73,6 +73,8 @@ def postprocess_qa_predictions(
         log_level (:obj:`int`, `optional`, defaults to ``logging.WARNING``):
             ``logging`` log level (e.g., ``logging.WARNING``)
     """
+    # NOTE: predictions will be of length 3 when using Seq2Seq QuestionAnswering models b/c the encoder last hidden
+    # state is always returned.
     if len(predictions) != 2:
         raise ValueError("`predictions` should be a tuple with two elements (start_logits, end_logits).")
     all_start_logits, all_end_logits = predictions
