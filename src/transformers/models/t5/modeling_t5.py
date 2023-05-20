@@ -802,12 +802,15 @@ class T5PreTrainedModel(PreTrainedModel):
         factor = self.config.initializer_factor  # Used for testing weights initialization
         if isinstance(module, T5LayerNorm):
             module.weight.data.fill_(factor * 1.0)
-        elif isinstance(module, (T5Model, T5ForConditionalGeneration, T5EncoderModel)):
+        elif isinstance(module, (T5Model, T5ForConditionalGeneration, T5EncoderModel, T5ForQuestionAnswering)):
             # Mesh TensorFlow embeddings initialization
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
             module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
             if hasattr(module, "lm_head") and not self.config.tie_word_embeddings:
                 module.lm_head.weight.data.normal_(mean=0.0, std=factor * 1.0)
+            if hasattr(module, "qa_outputs"):
+                module.qa_outputs.weight.data.normal_(mean=0.0, std=factor * 1.0)
+                module.qa_outputs.bias.data.zero_()
         elif isinstance(module, T5DenseActDense):
             # Mesh TensorFlow FF initialization
             # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
@@ -1958,7 +1961,13 @@ class T5EncoderModel(T5PreTrainedModel):
         return encoder_outputs
 
 
-@add_start_docstrings("""T5 Model with a `language modeling` head on top.""", T5_START_DOCSTRING)
+@add_start_docstrings(
+    """
+    T5 Model with a span classification head on top for extractive question-answering tasks like SQuAD (linear
+    layers on top of the hidden-states output to compute `span start logits` and `span end logits`).
+    """,
+    T5_START_DOCSTRING
+)
 class T5ForQuestionAnswering(T5PreTrainedModel):
     _keys_to_ignore_on_load_missing = [
         r"encoder.embed_tokens.weight",
@@ -1970,7 +1979,22 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
 
     def __init__(self, config: T5Config):
         super().__init__(config)
-        self.transformer = T5Model(config)
+        self.model_dim = config.d_model
+
+        self.shared = nn.Embedding(config.vocab_size, config.d_model)
+
+        encoder_config = copy.deepcopy(config)
+        encoder_config.is_decoder = False
+        encoder_config.use_cache = False
+        encoder_config.is_encoder_decoder = False
+        self.encoder = T5Stack(encoder_config, self.shared)
+
+        decoder_config = copy.deepcopy(config)
+        decoder_config.is_decoder = True
+        decoder_config.is_encoder_decoder = False
+        decoder_config.num_layers = config.num_decoder_layers
+        self.decoder = T5Stack(decoder_config, self.shared)
+
         self.num_labels = config.num_labels
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1980,6 +2004,20 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
         # Model parallel
         self.model_parallel = False
         self.device_map = None
+
+    def get_input_embeddings(self):
+        return self.shared
+
+    def set_input_embeddings(self, new_embeddings):
+        self.shared = new_embeddings
+        self.encoder.set_input_embeddings(new_embeddings)
+        self.decoder.set_input_embeddings(new_embeddings)
+
+    def get_encoder(self):
+        return self.encoder
+
+    def get_decoder(self):
+        return self.decoder
 
     @add_start_docstrings_to_model_forward(T5_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=Seq2SeqQuestionAnsweringModelOutput, config_class=_CONFIG_FOR_DOC)
@@ -2019,24 +2057,64 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
         if start_positions is not None and end_positions is not None:
             use_cache = False
 
-        outputs = self.transformer(
-            input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            head_mask=head_mask,
-            decoder_head_mask=decoder_head_mask,
+        # Copied from models.bart.modeling_bart.BartModel.forward
+        #   different to other models, T5 automatically creates decoder_input_ids from
+        #   input_ids if no decoder_input_ids are provided
+        if decoder_input_ids is None and decoder_inputs_embeds is None:
+            if input_ids is None:
+                raise ValueError(
+                    "If no `decoder_input_ids` or `decoder_inputs_embeds` are "
+                    "passed, `input_ids` cannot be `None`. Please pass either "
+                    "`input_ids` or `decoder_input_ids` or `decoder_inputs_embeds`."
+                )
+            decoder_input_ids = self._shift_right(input_ids)
+
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # FutureWarning: head_mask was separated into two input args - head_mask, decoder_head_mask
+        if head_mask is not None and decoder_head_mask is None:
+            if self.config.num_layers == self.config.num_decoder_layers:
+                warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
+                decoder_head_mask = head_mask
+
+        # Encode if needed (training, first prediction pass)
+        if encoder_outputs is None:
+            encoder_outputs = self.encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+            )
+
+        hidden_states = encoder_outputs[0]
+
+        # Decode
+        decoder_outputs = self.decoder(
+            input_ids=decoder_input_ids,
+            attention_mask=decoder_attention_mask,
+            inputs_embeds=decoder_inputs_embeds,
+            past_key_values=None,
+            encoder_hidden_states=hidden_states,
+            encoder_attention_mask=attention_mask,
+            head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,
-            encoder_outputs=encoder_outputs,
-            inputs_embeds=inputs_embeds,
-            decoder_inputs_embeds=decoder_inputs_embeds,
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
 
-        sequence_output = outputs[0]
+        sequence_output = decoder_outputs[0]
 
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
@@ -2061,18 +2139,20 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
             total_loss = (start_loss + end_loss) / 2
 
         if not return_dict:
-            output = (start_logits, end_logits) + outputs[1:]
+            output = (start_logits, end_logits) + decoder_outputs[1:] + encoder_outputs
             return ((total_loss,) + output) if total_loss is not None else output
 
         return Seq2SeqQuestionAnsweringModelOutput(
             loss=total_loss,
             start_logits=start_logits,
             end_logits=end_logits,
-            past_key_values=outputs.past_key_values,
-            decoder_hidden_states=outputs.decoder_hidden_states,
-            decoder_attentions=outputs.decoder_attentions,
-            cross_attentions=outputs.cross_attentions,
-            encoder_last_hidden_state=outputs.encoder_last_hidden_state if output_hidden_states else None,
-            encoder_hidden_states=outputs.encoder_hidden_states,
-            encoder_attentions=outputs.encoder_attentions,
+            past_key_values=decoder_outputs.past_key_values,
+            decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_attentions=decoder_outputs.attentions,
+            cross_attentions=decoder_outputs.cross_attentions,
+            # TODO Should encoder_last_hidden_state be returned even when output_hidden_states is False?
+            # encoder_last_hidden_state=encoder_outputs.encoder_last_hidden_state if output_hidden_states else None,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
         )
