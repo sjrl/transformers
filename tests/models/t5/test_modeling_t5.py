@@ -46,6 +46,7 @@ if is_torch_available():
         T5Model,
         T5Tokenizer,
         T5ForQuestionAnswering,
+        T5EncoderForQuestionAnswering,
     )
     from transformers.models.t5.modeling_t5 import T5_PRETRAINED_MODEL_ARCHIVE_LIST
 
@@ -810,8 +811,16 @@ class T5EncoderOnlyModelTester:
         return config, inputs_dict
 
 
-class T5EncoderOnlyModelTest(ModelTesterMixin, unittest.TestCase):
-    all_model_classes = (T5EncoderModel,) if is_torch_available() else ()
+class T5EncoderOnlyModelTest(ModelTesterMixin, unittest.TestCase, PipelineTesterMixin):
+    all_model_classes = (T5EncoderModel, T5EncoderForQuestionAnswering) if is_torch_available() else ()
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": T5EncoderModel,
+            "question-answering": T5EncoderForQuestionAnswering,
+        }
+        if is_torch_available()
+        else {}
+    )
     test_pruning = False
     test_resize_embeddings = False
     test_model_parallel = True

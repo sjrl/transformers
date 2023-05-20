@@ -2519,6 +2519,7 @@ else:
             "T5PreTrainedModel",
             "load_tf_weights_in_t5",
             "T5ForQuestionAnswering",
+            "T5EncoderForQuestionAnswering",
         ]
     )
     _import_structure["models.table_transformer"].extend(
@@ -5931,6 +5932,7 @@ if TYPE_CHECKING:
             T5PreTrainedModel,
             load_tf_weights_in_t5,
             T5ForQuestionAnswering,
+            T5EncoderForQuestionAnswering,
         )
         from .models.table_transformer import (
             TABLE_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST,
