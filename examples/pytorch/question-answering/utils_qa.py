@@ -21,6 +21,7 @@ import logging
 import os
 from typing import Optional, Tuple
 
+import torch
 import numpy as np
 from tqdm.auto import tqdm
 
@@ -444,3 +445,49 @@ def postprocess_qa_predictions_with_beam_search(
                 writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
 
     return all_predictions, scores_diff_json
+
+
+LAYER_NORM_NAMES = {
+    "t5": ["layer_norm"],
+    "deberta": ["LayerNorm"]
+}
+
+
+def prepare_model_for_training(
+    model,
+    use_gradient_checkpointing=True,
+    layer_norm_names=[v for v in LAYER_NORM_NAMES.values()]
+):
+    r"""
+    This method wraps the entire protocol for preparing a model before running a training. This includes:
+        1- Cast the layernorm in fp32 2- making output embedding layer require grads 3- Add the upcasting of the lm
+        head to fp32
+
+    Args:
+        model, (`transformers.PreTrainedModel`):
+            The loaded model from `transformers`
+    """
+
+    for name, param in model.named_parameters():
+        # freeze base model's layers
+        param.requires_grad = False
+
+        # cast layer norm in fp32 for stability for 8bit models
+        if param.ndim == 1 and any(layer_norm_name in name for layer_norm_name in layer_norm_names):
+            param.data = param.data.to(torch.float32)
+
+    if use_gradient_checkpointing:
+        # For backward compatibility
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        else:
+
+            def make_inputs_require_grad(module, input, output):
+                output.requires_grad_(True)
+
+            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
+        # enable gradient checkpointing for memory efficiency
+        model.gradient_checkpointing_enable()
+
+    return model
