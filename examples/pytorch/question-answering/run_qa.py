@@ -432,6 +432,7 @@ def main():
         # Updated targe modules following recommendation from AdaLora paper
         target_modules_mapping = {
             "deberta-v2": ["query_proj", "key_proj", "value_proj", "dense"],
+            "deberta-v3": ["query_proj", "key_proj", "value_proj", "dense"],
             "bert": ["query", "value", "key", "dense"],
             "t5": ["q", "k", "v", "o", "wi", "wo"],
         }
