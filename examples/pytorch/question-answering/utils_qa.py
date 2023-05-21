@@ -456,7 +456,7 @@ LAYER_NORM_NAMES = {
 def prepare_model_for_training(
     model,
     use_gradient_checkpointing=True,
-    layer_norm_names=[v for v in LAYER_NORM_NAMES.values()]
+    layer_norm_names=[v for l in LAYER_NORM_NAMES.values() for v in l]
 ):
     r"""
     This method wraps the entire protocol for preparing a model before running a training. This includes:
