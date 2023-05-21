@@ -31,7 +31,7 @@ import evaluate
 import torch
 from datasets import load_dataset
 from trainer_qa import QuestionAnsweringTrainer
-from utils_qa import postprocess_qa_predictions
+from utils_qa import postprocess_qa_predictions, prepare_model_for_training
 
 import transformers
 from transformers import (
@@ -774,16 +774,18 @@ def main():
                 path = os.path.join(args.output_dir, f"logs.jsonl")
                 with open(path, "a") as f:
                     f.write(json.dumps(output, sort_keys=True) + '\n')
-    call_backs = [SaveLogCallback]
+    callbacks = [SaveLogCallback]
 
     # Needed b/c PeftModel.save_pretrained is not called by the trainer since PeftModel does not inherit from
     # PreTrainedModel
+    class SavePeftModel(TrainerCallback):
+        def on_save(self, args, state, control, **kwargs):
+            if state.is_local_process_zero:
+                output_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                model.save_pretrained(output_dir)
+
     if model_args.use_lora:
-        class SavePeftModel(TrainerCallback):
-            def on_save(self, args, state, control, **kwargs):
-                if state.is_local_process_zero:
-                    model.save_pretrained(args.output_dir)
-        call_backs.extend([SavePeftModel])
+        callbacks.extend([SavePeftModel])
 
     # Initialize our Trainer
     trainer = QuestionAnsweringTrainer(
@@ -796,7 +798,7 @@ def main():
         data_collator=data_collator,
         post_process_function=post_processing_function,
         compute_metrics=compute_metrics,
-        callbacks=call_backs,
+        callbacks=callbacks,
     )
 
     # Training
