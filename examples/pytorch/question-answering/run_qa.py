@@ -456,10 +456,12 @@ def main():
         # prepare int-8 model for training
         if model_args.load_in_8bit:
             model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        else:
+            model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # Kind of a weird if check, but model.is_gradient_checkpointing needs to be set to True before the peft model
         # is loaded
-        elif training_args.gradient_checkpointing:
-            model.gradient_checkpointing_enable()
+        # elif training_args.gradient_checkpointing:
+        #     model.gradient_checkpointing_enable()
 
         # add LoRA adaptor
         model = get_peft_model(model, lora_config)
@@ -810,6 +812,8 @@ def main():
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
+        # NOTE: Have to add this for the final save of the PeftModel and PeftConfig b/c skipped by trainer.save_model()
+        trainer.model.save_pretrained(training_args.output_dir)
 
         metrics = train_result.metrics
         max_train_samples = (
