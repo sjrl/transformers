@@ -453,11 +453,10 @@ def main():
             bias="none",
             task_type=TaskType.QUESTION_ANS
         )
+        model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # prepare int-8 model for training
-        if model_args.load_in_8bit:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
-        else:
-            model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        # if model_args.load_in_8bit:
+        #     model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # Kind of a weird if check, but model.is_gradient_checkpointing needs to be set to True before the peft model
         # is loaded
         # elif training_args.gradient_checkpointing:
