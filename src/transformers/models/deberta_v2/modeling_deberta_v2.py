@@ -1466,8 +1466,9 @@ class DebertaV2ForQuestionAnswering(DebertaV2PreTrainedModel):
         self.post_init()
 
         # TODO Reinitialize weights of qa_outputs to see if we can get rid of hockey stick.
-        self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
-        self.qa_outputs.weight.data *= 0.1
+        if not getattr(self.qa_outputs, "_is_hf_initialized", False):
+            self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
+            self.qa_outputs.weight.data *= 0.1
 
     @add_start_docstrings_to_model_forward(DEBERTA_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
