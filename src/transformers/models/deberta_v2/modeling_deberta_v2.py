@@ -22,8 +22,6 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, LayerNorm, MSELoss
 
-from scipy.stats import truncnorm
-
 from ...activations import ACT2FN
 from ...modeling_outputs import (
     BaseModelOutput,
@@ -1469,6 +1467,7 @@ class DebertaV2ForQuestionAnswering(DebertaV2PreTrainedModel):
 
         # TODO Reinitialize weights of qa_outputs to see if we can get rid of hockey stick.
         # if not getattr(self.qa_outputs, "_is_hf_initialized", False):
+        #     from scipy.stats import truncnorm
         #     # Produces same initial loss as default initialization
         #     self.qa_outputs.weight.data = torch.tensor(
         #         truncnorm.rvs(-0.02, 0.02, size=tuple(self.qa_outputs.weight.shape)),
