@@ -107,6 +107,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Load model in 8 bit."},
     )
+    peft_model_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of a pretrained PeftModel."},
+    )
     use_lora: bool = field(
         default=False,
         metadata={"help": "Use LoRA training enabled by peft."},
@@ -399,12 +403,13 @@ def main():
         warnings.warn("Tokenizer does not have a pad_token. Setting tokenizer.pad_token = tokenizer.eos_token.")
         tokenizer.pad_token = tokenizer.eos_token
 
-    if model_args.use_lora:
+    if model_args.use_lora or model_args.peft_model_id:
         try:
             import peft
         except ImportError:
-            logger.warning("Peft is not installed so setting use_peft=False")
+            logger.warning("Peft is not installed so setting use_lora=False and peft_model_id=None")
             model_args.use_lora = False
+            model_args.peft_model_id = None
 
     torch_dtypes = {
         'bfloat16': torch.bfloat16,
@@ -424,8 +429,20 @@ def main():
         load_in_8bit=model_args.load_in_8bit,
         device_map={"": 0}
     )
+    if model_args.peft_model_id:
+        from peft import get_peft_model, PeftConfig
+        # If provided load an existing PeftModel
+        config = PeftConfig.from_pretrained(model_args.peft_model_id)
+        # TODO Should probably use the config.base_model_name_or_path to load the base model
+        # model = AutoModelForQuestionAnswering.from_pretrained(config.base_model_name_or_path)
+        model = get_peft_model(model, config)
+
+    if model_args.peft_model_id and model_args.use_lora:
+        logger.warning("The parameters peft_model_id and use_lora cannot both be set. Setting use_lora=False.")
+        model_args.use_lora = False
 
     if model_args.use_lora:
+        # Create new PeftModel and PeftConfig
         logger.info("Using PEFT for LoRA training.")
         from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
 
