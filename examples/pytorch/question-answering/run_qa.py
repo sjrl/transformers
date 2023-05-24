@@ -430,12 +430,14 @@ def main():
         device_map={"": 0}
     )
     if model_args.peft_model_id:
-        from peft import get_peft_model, LoraConfig
+        from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
         # If provided load an existing PeftModel
-        config = LoraConfig.from_pretrained(model_args.peft_model_id)
         # TODO Should probably use the config.base_model_name_or_path to load the base model
+        # config = LoraConfig.from_pretrained(model_args.peft_model_id)
         # model = AutoModelForQuestionAnswering.from_pretrained(config.base_model_name_or_path)
-        model = get_peft_model(model, config)
+        model = PeftModelForQuestionAnswering.from_pretrained(
+            model=model, model_id=model_args.peft_model_id, is_trainable=False
+        )
 
     if model_args.peft_model_id and model_args.use_lora:
         logger.warning("The parameters peft_model_id and use_lora cannot both be set. Setting use_lora=False.")
