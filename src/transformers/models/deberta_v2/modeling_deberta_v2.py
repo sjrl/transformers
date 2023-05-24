@@ -1541,7 +1541,11 @@ class DebertaV2ForQuestionAnswering(DebertaV2PreTrainedModel):
             start_positions = start_positions.clamp(0, ignored_index)
             end_positions = end_positions.clamp(0, ignored_index)
 
-            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            if hasattr(self.config, "label_smoothing"):
+                label_smoothing = self.config.label_smoothing
+            else:
+                label_smoothing = 0.0
+            loss_fct = CrossEntropyLoss(ignore_index=ignored_index, label_smoothing=label_smoothing)
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2

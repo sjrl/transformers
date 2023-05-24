@@ -470,7 +470,8 @@ def main():
             target_modules=target_modules,
             lora_dropout=model_args.lora_dropout if model_args.lora_dropout else 0.1,
             bias="none",
-            task_type=TaskType.QUESTION_ANS
+            task_type=TaskType.QUESTION_ANS,
+            modules_to_save=["qa_outputs"],
         )
         model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # prepare int-8 model for training
