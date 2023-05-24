@@ -430,9 +430,9 @@ def main():
         device_map={"": 0}
     )
     if model_args.peft_model_id:
-        from peft import get_peft_model, PeftConfig
+        from peft import get_peft_model, LoraConfig
         # If provided load an existing PeftModel
-        config = PeftConfig.from_pretrained(model_args.peft_model_id)
+        config = LoraConfig.from_pretrained(model_args.peft_model_id)
         # TODO Should probably use the config.base_model_name_or_path to load the base model
         # model = AutoModelForQuestionAnswering.from_pretrained(config.base_model_name_or_path)
         model = get_peft_model(model, config)
