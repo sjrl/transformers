@@ -371,7 +371,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
     )
-    config.label_smoothing = 0.1
+    # config.label_smoothing = 0.1
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -454,7 +454,7 @@ def main():
             "deberta-v2": ["query_proj", "key_proj", "value_proj", "dense"],
             "deberta-v3": ["query_proj", "key_proj", "value_proj", "dense"],
             "bert": ["query", "value", "key", "dense"],
-            "t5": ["q", "k", "v", "o", "wi", "wo"],
+            "t5": ["q", "k", "v", "o", "wi_0", "wi_1", "wo"],
         }
         target_modules = None
         for key in target_modules_mapping:
