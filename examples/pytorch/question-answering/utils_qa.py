@@ -19,7 +19,7 @@ import collections
 import json
 import logging
 import os
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 import numpy as np
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 def postprocess_qa_predictions(
     examples,
     features,
-    predictions: Tuple[np.ndarray, np.ndarray],
+    predictions: Union[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, np.ndarray]],
     version_2_with_negative: bool = False,
     n_best_size: int = 20,
     max_answer_length: int = 30,
@@ -76,7 +76,11 @@ def postprocess_qa_predictions(
     """
     # NOTE: predictions will be of length 3 when using Seq2Seq QuestionAnswering models b/c the encoder last hidden
     # state is always returned.
-    if len(predictions) != 2:
+    if len(predictions) == 2:
+        predictions = predictions
+    elif len(predictions) == 3:
+        predictions = (predictions[0], predictions[1])
+    else:
         raise ValueError("`predictions` should be a tuple with two elements (start_logits, end_logits).")
     all_start_logits, all_end_logits = predictions
 
