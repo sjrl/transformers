@@ -528,6 +528,7 @@ class T5Attention(nn.Module):
             hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
         )
 
+        # TODO Guess from Deberta-V2 that the inf values come from here
         # compute scores
         scores = torch.matmul(
             query_states, key_states.transpose(3, 2)
@@ -706,6 +707,8 @@ class T5Block(nn.Module):
 
         # clamp inf values to enable fp16 training
         if hidden_states.dtype == torch.float16:
+            if torch.isinf(hidden_states).any():
+                logger.info("SEB: Inf detected in hidden state after T5LayerSelfAttention")
             clamp_value = torch.where(
                 torch.isinf(hidden_states).any(),
                 torch.finfo(hidden_states.dtype).max - 1000,
@@ -737,6 +740,8 @@ class T5Block(nn.Module):
 
             # clamp inf values to enable fp16 training
             if hidden_states.dtype == torch.float16:
+                if torch.isinf(hidden_states).any():
+                    logger.info("SEB: Inf detected in hidden state after T5LayerCrossAttention")
                 clamp_value = torch.where(
                     torch.isinf(hidden_states).any(),
                     torch.finfo(hidden_states.dtype).max - 1000,
@@ -756,6 +761,8 @@ class T5Block(nn.Module):
 
         # clamp inf values to enable fp16 training
         if hidden_states.dtype == torch.float16:
+            if torch.isinf(hidden_states).any():
+                logger.info("SEB: Inf detected in hidden state after T5LayerFF")
             clamp_value = torch.where(
                 torch.isinf(hidden_states).any(),
                 torch.finfo(hidden_states.dtype).max - 1000,
