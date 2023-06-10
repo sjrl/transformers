@@ -428,7 +428,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
         load_in_8bit=model_args.load_in_8bit,
-        device_map={"": 0}
+        device_map={"": 0} if model_args.load_in_8bit else None,
     )
     if model_args.peft_model_id:
         from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
