@@ -308,9 +308,22 @@ class T5DenseGatedActDense(nn.Module):
         self.dropout = nn.Dropout(config.dropout_rate)
         self.act = ACT2FN[config.dense_act_fn]
 
+    # NOTE: Autocasting needs to be disabled to ensure that hidden_states remains in float32.
+    #       Otherwise, autocasting can return torch.float16 matrices even when the weights and the inputs
+    #       are in torch.float32.
+    # TODO Consider following example here:
+    #      https://stackoverflow.com/questions/52659735/how-to-pass-class-variables-to-parameterized-decorators
+    #      to optionally set cast_inputs to torch.float32 if fp16 is asked for.
+    #      Since this casting is unneccessary for training with tf32 or bf16.
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(self, hidden_states):
         hidden_gelu = self.act(self.wi_0(hidden_states))
         hidden_linear = self.wi_1(hidden_states)
+
+        # TODO Redo analysis for inference, loading the model in different weight dtypes.
+        # NOTE: The inf problem starts here w/ hidden_gelu * hidden_linear
+        #       To make fp16 training work hidden_states is cast to dtype of self.wo here.
+        # hidden_linear = hidden_linear.to(self.wo.weight.dtype)
         hidden_states = hidden_gelu * hidden_linear
         hidden_states = self.dropout(hidden_states)
 
@@ -528,7 +541,6 @@ class T5Attention(nn.Module):
             hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
         )
 
-        # TODO Guess from Deberta-V2 that the inf values come from here
         # compute scores
         scores = torch.matmul(
             query_states, key_states.transpose(3, 2)
