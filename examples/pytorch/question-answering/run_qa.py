@@ -127,6 +127,10 @@ class ModelArguments:
         default=None,
         metadata={"help": "Set dropout parameter for LoRA."},
     )
+    lora_train_embeddings: bool = field(
+        default=False,
+        metadata={"help": "Train the embeddings when using LoRA"},
+    )
 
 
 
@@ -428,7 +432,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         torch_dtype=torch_dtypes[model_args.torch_dtype] if model_args.torch_dtype else None,
         load_in_8bit=model_args.load_in_8bit,
-        device_map={"": 0} if model_args.load_in_8bit else None,
+        # device_map={"": 0} if model_args.load_in_8bit else None,
     )
     if model_args.peft_model_id:
         from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
@@ -457,14 +461,25 @@ def main():
             "t5": ["q", "k", "v", "o", "wi_0", "wi_1", "wo"],
         }
         target_modules = None
+        target_key = None
         for key in target_modules_mapping:
             if key in model_args.model_name_or_path:
+                target_key = key
                 target_modules = target_modules_mapping[key]
                 break
         if target_modules is None:
             raise ValueError("Could not determine the target_modules to use in LoRA")
 
         # Define LoRA Config
+        modules_to_save = ["qa_outputs"]
+        target_embeddings_mapping = {
+            "deberta-v2": ["word_embeddings"],
+            "deberta-v3": ["word_embeddings"],
+            "bert": ["embeddings"],
+            "t5": ["shared"],
+        }
+        if model_args.lora_train_embeddings:
+            modules_to_save += target_embeddings_mapping[target_key]
         lora_config = LoraConfig(
             r=model_args.lora_r if model_args.lora_r else 8,
             lora_alpha=model_args.lora_alpha if model_args.lora_alpha else 32,
