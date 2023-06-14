@@ -315,7 +315,7 @@ class T5DenseGatedActDense(nn.Module):
     #      https://stackoverflow.com/questions/52659735/how-to-pass-class-variables-to-parameterized-decorators
     #      to optionally set cast_inputs to torch.float32 if fp16 is asked for.
     #      Since this casting is unneccessary for training with tf32 or bf16.
-    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+    #@torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(self, hidden_states):
         hidden_gelu = self.act(self.wi_0(hidden_states))
         hidden_linear = self.wi_1(hidden_states)
@@ -338,6 +338,7 @@ class T5DenseGatedActDense(nn.Module):
             hidden_states = hidden_states.to(self.wo.weight.dtype)
 
         hidden_states = self.wo(hidden_states)
+        #import pdb;pdb.set_trace()
         return hidden_states
 
 
@@ -621,6 +622,7 @@ class T5LayerSelfAttention(nn.Module):
             use_cache=use_cache,
             output_attentions=output_attentions,
         )
+        #import pdb;pdb.set_trace()
         hidden_states = hidden_states + self.dropout(attention_output[0])
         outputs = (hidden_states,) + attention_output[1:]  # add attentions if we output them
         return outputs
@@ -717,10 +719,13 @@ class T5Block(nn.Module):
         hidden_states, present_key_value_state = self_attention_outputs[:2]
         attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
 
+        if torch.isinf(hidden_states).any():
+            logger.info("SEB: Inf detected in hidden state after T5LayerSelfAttention")
+
+        # SEB: This is missed when using --fp16 and not laoding in torch.float16 b/c hidden_states are kept at torch.float32
         # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16:
-            if torch.isinf(hidden_states).any():
-                logger.info("SEB: Inf detected in hidden state after T5LayerSelfAttention")
+        #if hidden_states.dtype == torch.float16:
+        if torch.isinf(hidden_states).any():
             clamp_value = torch.where(
                 torch.isinf(hidden_states).any(),
                 torch.finfo(hidden_states.dtype).max - 1000,
@@ -750,10 +755,13 @@ class T5Block(nn.Module):
             )
             hidden_states = cross_attention_outputs[0]
 
+            if torch.isinf(hidden_states).any():
+                logger.info("SEB: Inf detected in hidden state after T5LayerCrossAttention")
+
+            # SEB: This is missed when using --fp16 and not laoding in torch.float16 b/c hidden_states are kept at torch.float32
             # clamp inf values to enable fp16 training
-            if hidden_states.dtype == torch.float16:
-                if torch.isinf(hidden_states).any():
-                    logger.info("SEB: Inf detected in hidden state after T5LayerCrossAttention")
+            #if hidden_states.dtype == torch.float16:
+            if torch.isinf(hidden_states).any():
                 clamp_value = torch.where(
                     torch.isinf(hidden_states).any(),
                     torch.finfo(hidden_states.dtype).max - 1000,
@@ -769,12 +777,18 @@ class T5Block(nn.Module):
             attention_outputs = attention_outputs + cross_attention_outputs[2:]
 
         # Apply Feed Forward layer
-        hidden_states = self.layer[-1](hidden_states)
+        #hidden_states = self.layer[-1](hidden_states)
+        hidden_states_out = self.layer[-1](hidden_states)
+        #import pdb;pdb.set_trace()
+        hidden_states = hidden_states_out
 
+        if torch.isinf(hidden_states).any():
+            logger.info("SEB: Inf detected in hidden state after T5LayerFF")
+
+        # SEB: This is missed when using --fp16 and not laoding in torch.float16 b/c hidden_states are kept at torch.float32
         # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16:
-            if torch.isinf(hidden_states).any():
-                logger.info("SEB: Inf detected in hidden state after T5LayerFF")
+        #if hidden_states.dtype == torch.float16:
+        if torch.isinf(hidden_states).any():
             clamp_value = torch.where(
                 torch.isinf(hidden_states).any(),
                 torch.finfo(hidden_states.dtype).max - 1000,
@@ -1064,7 +1078,9 @@ class T5Stack(T5PreTrainedModel):
         position_bias = None
         encoder_decoder_position_bias = None
 
+        # SEB: Dropout exacerbates the issue b/c it will increase the value of each element in the matrix by 1/(1-p)
         hidden_states = self.dropout(inputs_embeds)
+        #import pdb;pdb.set_trace()
 
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
             layer_head_mask = head_mask[i]
@@ -2107,6 +2123,7 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
         self.model_dim = config.d_model
 
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
+        #import pdb;pdb.set_trace()
 
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False

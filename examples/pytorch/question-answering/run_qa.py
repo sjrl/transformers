@@ -374,6 +374,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         use_cache=True if not training_args.gradient_checkpointing else False,
+        #dropout_rate=0.0,  # NOTE: This can cause problems for T5 models during training
     )
     # config.label_smoothing = 0.1
     tokenizer = AutoTokenizer.from_pretrained(
@@ -489,14 +490,13 @@ def main():
             task_type=TaskType.QUESTION_ANS,
             modules_to_save=["qa_outputs"],
         )
-        model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        #model = prepare_model_for_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # prepare int-8 model for training
-        # if model_args.load_in_8bit:
-        #     model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
-        # Kind of a weird if check, but model.is_gradient_checkpointing needs to be set to True before the peft model
-        # is loaded
-        # elif training_args.gradient_checkpointing:
-        #     model.gradient_checkpointing_enable()
+        if model_args.load_in_8bit:
+            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        # model.is_gradient_checkpointing needs to be set to True before the peft model is loaded
+        elif training_args.gradient_checkpointing:
+            model.gradient_checkpointing_enable()
 
         # add LoRA adaptor
         model = get_peft_model(model, lora_config)

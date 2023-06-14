@@ -6,8 +6,8 @@
 # --model_name_or_path facebook/opt-125m \
 # --model_name_or_path bigscience/bloomz-560m \
 mkdir -p ./experiments/"$1"/"$2"
-#python run_qa.py \
-nohup python run_qa.py \
+#nohup python run_qa.py \
+python run_qa.py \
   --model_name_or_path google/"$1" \
   --dataset_name squad_v2 \
   --output_dir experiments/"$1"/"$2"/model/ \
@@ -17,16 +17,16 @@ nohup python run_qa.py \
   --max_answer_length 100 \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 8 \
+  --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 8 \
-  --gradient_accumulation_steps 6 \
+  --gradient_accumulation_steps 1 \
   --learning_rate 2e-5 \
   --lr_scheduler_type linear \
   --warmup_ratio 0.10 \
-  --num_train_epochs 4 \
+  --num_train_epochs 1 \
   --evaluation_strategy steps \
   --logging_strategy steps \
-  --logging_steps 50 \
+  --logging_steps 2 \
   --eval_steps 200 \
   --save_steps 400 \
   --save_total_limit 2 \
@@ -35,9 +35,10 @@ nohup python run_qa.py \
   --max_eval_samples 1000 \
   --overwrite_output_dir False \
   --optim adamw_bnb_8bit \
+  --fp16 \
   --pad_to_max_length True \
-  --tf32 True \
-  --gradient_checkpointing True > experiments/"$1"/"$2"/run.log 2>&1 &
+  --gradient_checkpointing True
+  #--gradient_checkpointing True > experiments/"$1"/"$2"/run.log 2>&1 &
   #--torch_dtype float16 \
   #--tf32 True \
   #--bf16 \
