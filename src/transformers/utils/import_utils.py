@@ -105,6 +105,7 @@ _psutil_available = _is_package_available("psutil")
 _py3nvml_available = _is_package_available("py3nvml")
 _pyctcdecode_available = _is_package_available("pyctcdecode")
 _pytesseract_available = _is_package_available("pytesseract")
+_pytest_available = _is_package_available("pytest")
 _pytorch_quantization_available = _is_package_available("pytorch_quantization")
 _rjieba_available = _is_package_available("rjieba")
 _sacremoses_available = _is_package_available("sacremoses")
@@ -146,7 +147,9 @@ if FORCE_TF_AVAILABLE in ENV_VARS_TRUE_VALUES:
     _tf_available = True
 else:
     if USE_TF in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TORCH not in ENV_VARS_TRUE_VALUES:
-        _tf_available = _is_package_available("tensorflow")
+        # Note: _is_package_available("tensorflow") fails for tensorflow-cpu. Please test any changes to the line below
+        # with tensorflow-cpu to make sure it still works!
+        _tf_available = importlib.util.find_spec("tensorflow") is not None
         if _tf_available:
             candidates = (
                 "tensorflow",
@@ -545,6 +548,10 @@ def is_vision_available():
 
 def is_pytesseract_available():
     return _pytesseract_available
+
+
+def is_pytest_available():
+    return _pytest_available
 
 
 def is_spacy_available():

@@ -1324,6 +1324,7 @@ class WhisperForConditionalGeneration(WhisperPreTrainedModel):
     _keys_to_ignore_on_save = [
         r"proj_out.weight",
     ]
+    _tied_weights_keys = ["proj_out.weight"]
 
     def __init__(self, config: WhisperConfig):
         super().__init__(config)
@@ -1778,7 +1779,7 @@ class WhisperForAudioClassification(WhisperPreTrainedModel):
         >>> predicted_class_ids = torch.argmax(logits).item()
         >>> predicted_label = model.config.id2label[predicted_class_ids]
         >>> predicted_label
-        'af_za'
+        'Afrikaans'
         ```"""
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
