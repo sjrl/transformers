@@ -63,7 +63,7 @@ def check_file_size(sf_filename: str, pt_filename: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('folder', type=str, default="./", nargs="?")
+    parser.add_argument('--folder', type=str, default="./", nargs="?")
     args = parser.parse_args()
 
     convert_single(folder=args.folder)
