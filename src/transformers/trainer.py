@@ -3094,8 +3094,10 @@ class Trainer:
 
         logger.info(f"***** Running {description} *****")
         if has_length(dataloader):
+            total_steps = len(dataloader)
             logger.info(f"  Num examples = {self.num_examples(dataloader)}")
         else:
+            total_steps = None
             logger.info("  Num examples: Unknown")
         logger.info(f"  Batch size = {batch_size}")
 
@@ -3168,7 +3170,9 @@ class Trainer:
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
             # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+            if args.eval_accumulation_steps is not None and (
+                    (step + 1) % args.eval_accumulation_steps == 0 or step == total_steps
+            ):
                 if losses_host is not None:
                     losses = nested_numpify(losses_host)
                     all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
