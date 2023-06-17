@@ -19,11 +19,13 @@ python run_qa.py \
   --tf32 True \
   --dataloader_num_workers 6 \
   --preprocessing_num_workers 6 \
+  --bf16_full_eval \
+  --eval_accumulation_steps 2 \
   --overwrite_output_dir False > experiments/"$1"/"$2"/eval_squad2.log 2>&1 &
 
-process_id=$!
-echo "PID: $process_id"
-wait $process_id
+#process_id=$!
+#echo "PID: $process_id"
+#wait $process_id
 
 #--model_name_or_path experiments/"$1"/"$2"/model \
 #--output_dir experiments/"$1"/"$2"/eval_squad/ \
@@ -44,4 +46,6 @@ python run_qa.py \
   --tf32 True \
   --dataloader_num_workers 6 \
   --preprocessing_num_workers 6 \
+  --bf16_full_eval \
+  --eval_accumulation_steps 2 \
   --overwrite_output_dir False > experiments/"$1"/"$2"/eval_squad.log 2>&1 &
