@@ -37,11 +37,15 @@ if __name__ == "__main__":
         potential_files = [os.path.join("merged_model", x) for x in potential_files]
     potential_files = [os.path.join(args.folder, x) for x in potential_files]
     present_files = [x for x in potential_files if Path(x).is_file()]
+    present_files.extend(present_lora_files)
     if len(present_files) == 0:
         raise RuntimeError(f"No files to upload were found")
     for f in present_files:
+        path_in_repo = f.split(args.folder)[-1]
+        if "merged_model" in path_in_repo:
+            path_in_repo = path_in_repo.split("merged_model/")[-1]
         api.upload_file(
             path_or_fileobj=f,
-            path_in_repo=f.split(args.folder)[-1],
+            path_in_repo=path_in_repo,
             repo_id=args.repo,
         )

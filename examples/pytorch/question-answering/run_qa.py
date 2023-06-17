@@ -517,7 +517,7 @@ def main():
         )
 
     # Preprocessing the datasets.
-    # Preprocessing is slighlty different for training and evaluation.
+    # Preprocessing is slightly different for training and evaluation.
     if training_args.do_train:
         column_names = raw_datasets["train"].column_names
     elif training_args.do_eval:
@@ -802,7 +802,11 @@ def main():
 
     # TODO Add validation loss
     def compute_metrics(p: EvalPrediction):
-        return metric.compute(predictions=p.predictions, references=p.label_ids)
+        return metric.compute(
+            predictions=p.predictions,
+            references=p.label_ids,
+            # strategy="bootstrap"  # TODO check if this works to be able to compute confidence intervals
+        )
 
     class SaveLogCallback(TrainerCallback):
         def on_log(self, args, state, control, logs=None, **kwargs):
