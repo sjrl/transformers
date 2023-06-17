@@ -14,6 +14,7 @@ if __name__ == "__main__":
     potential_files = [
         # Model
         "config.json",
+        "modeling_t5qa.py"
         "pytorch_model.bin",
         "model.safetensors",
         # Tokenizer
@@ -29,12 +30,11 @@ if __name__ == "__main__":
         # LoRA model
         "adapter_config.json",
         "adapter_model.bin",
-        # Merged Model
-        "merged_model/merges.txt",  # not always present
-        "merged_model/config.json",
-        "merged_model/pytorch_model.bin",
-        "merged_model/model.safetensors",
     ]
+    lora_potential_files = [os.path.join(args.folder, x) for x in lora_potential_files]
+    present_lora_files = [x for x in lora_potential_files if Path(x).is_file()]
+    if len(present_lora_files) > 0:
+        potential_files = [os.path.join("merged_model", x) for x in potential_files]
     potential_files = [os.path.join(args.folder, x) for x in potential_files]
     present_files = [x for x in potential_files if Path(x).is_file()]
     if len(present_files) == 0:
