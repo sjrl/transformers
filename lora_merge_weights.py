@@ -28,7 +28,7 @@ def merge_lora_weights(peft_model_name_or_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('peft_model_name_or_path', type=str, default="./", nargs="?")
+    parser.add_argument('--peft_model_name_or_path', type=str, default="./", nargs="?")
     args = parser.parse_args()
 
     merge_lora_weights(peft_model_name_or_path=args.peft_model_name_or_path)
