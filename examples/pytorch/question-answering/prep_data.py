@@ -3,26 +3,24 @@ from typing import Optional
 from datasets import load_dataset, concatenate_datasets, DatasetDict
 
 
-# QABlend
-def get_qablend(
+def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
+    """
+    Add the "subset" column to each split in `dataset_dict` with value `subset_name`.
+    """
+    result = {}
+    for split in dataset_dict:
+        dataset = dataset_dict[split]
+        dataset = dataset.add_column("subset", [subset_name] * len(dataset))
+        result[split] = dataset
+    return DatasetDict(result)
+
+
+def _prep_mrqa(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
     preprocessing_num_workers: int = 1,
     overwrite_cache: bool = False,
 ):
-    """
-    Blend multiple QA datasets from HuggingFace
-    MRQA:
-
-    Squad V2 (only no answer questions):
-
-    SynQA:
-
-    AdversarialQA:
-
-    ROPES:
-
-    """
     # TODO Alternatively I could download the mrqa datasets repo and modify the mrqa.py script to output the desired format.
     #      This could end up being much faster if this map takes awhile ...
     mrqa_datasets = load_dataset(
@@ -34,7 +32,7 @@ def get_qablend(
     # Filter out squad datapoints
     mrqa_datasets = mrqa_datasets.filter(lambda example: example["subset"] != "SQuAD")
     # Remove unneeded columns
-    mrqa_datasets = mrqa_datasets.remove_columns(["context_tokens", "question_tokens", "answers", "subset"])
+    mrqa_datasets = mrqa_datasets.remove_columns(["context_tokens", "question_tokens", "answers"])
     # Rename columns
     mrqa_datasets = mrqa_datasets.rename_column("qid", "id")
     # Map detected_answers to answers in the correct format
@@ -51,6 +49,16 @@ def get_qablend(
         load_from_cache_file=not overwrite_cache,
         desc="Formatting MRQA",
     )
+    return mrqa_datasets
+
+
+def _prep_ropes(
+    cache_dir: Optional[str] = None,
+    use_auth_token: bool = False,
+    preprocessing_num_workers: int = 1,
+    overwrite_cache: bool = False,
+):
+    # ROPES dataset
     ropes_datasets = load_dataset(
         "ropes",
         None,
@@ -76,6 +84,14 @@ def get_qablend(
         load_from_cache_file=not overwrite_cache,
         desc="Updating answers for ROPES",
     )
+    ropes_datasets = _add_subset_column(dataset_dict=ropes_datasets, subset_name="ROPES")
+    return ropes_datasets
+
+
+def _prep_squad_v2(
+    cache_dir: Optional[str] = None,
+    use_auth_token: bool = False,
+):
     # Has train, validation
     squad_v2_datasets = load_dataset(
         "squad_v2",
@@ -83,6 +99,14 @@ def get_qablend(
         cache_dir=cache_dir,
         use_auth_token=True if use_auth_token else None,
     )
+    squad_v2_datasets = _add_subset_column(dataset_dict=squad_v2_datasets, subset_name="SQuADV2")
+    return squad_v2_datasets
+
+
+def _prep_adversarial_qa(
+    cache_dir: Optional[str] = None,
+    use_auth_token: bool = False,
+):
     # Has train, validation, test
     adversarial_qa_datasets = load_dataset(
         "adversarial_qa",
@@ -92,13 +116,76 @@ def get_qablend(
     )
     # Remove extra column
     adversarial_qa_datasets.remove_columns("metadata")
-    # Has train
+    adversarial_qa_datasets = _add_subset_column(dataset_dict=adversarial_qa_datasets, subset_name="adversarialQA")
+    return adversarial_qa_datasets
+
+
+def _prep_synqa(
+    cache_dir: Optional[str] = None,
+    use_auth_token: bool = False,
+):
     synqa_datasets = load_dataset(
         "mbartolo/synQA",
         None,
         cache_dir=cache_dir,
         use_auth_token=True if use_auth_token else None,
     )
+    synqa_datasets = _add_subset_column(dataset_dict=synqa_datasets, subset_name="synQA")
+    return synqa_datasets
+
+
+# BlendQA
+def get_blendqa(
+    cache_dir: Optional[str] = None,
+    use_auth_token: bool = False,
+    preprocessing_num_workers: int = 1,
+    overwrite_cache: bool = False,
+):
+    """
+    Blend multiple QA datasets from HuggingFace
+    MRQA:
+
+    Squad V2 (only no answer questions):
+
+    SynQA:
+
+    AdversarialQA:
+
+    ROPES:
+
+    :param cache_dir: Directory to read/write data. Defaults to `"~/.cache/huggingface/datasets"`.
+    :param use_auth_token:
+    :param preprocessing_num_workers:
+    :param overwrite_cache: Whether to overwrite the cached training and evaluation sets.
+    """
+    # MRQA Dataset
+    mrqa_datasets = _prep_mrqa(
+        cache_dir=cache_dir,
+        use_auth_token=use_auth_token,
+        preprocessing_num_workers=preprocessing_num_workers,
+        overwrite_cache=overwrite_cache
+    )
+
+    # ROPES dataset
+    ropes_datasets = _prep_ropes(
+        cache_dir=cache_dir,
+        use_auth_token=use_auth_token,
+        preprocessing_num_workers=preprocessing_num_workers,
+        overwrite_cache=overwrite_cache
+    )
+
+    # SQuADV2 Dataset
+    # Has train, validation
+    squad_v2_datasets = _prep_squad_v2(cache_dir=cache_dir, use_auth_token=use_auth_token)
+
+    # adversarial_qa dataset
+    # Has train, validation, test
+    adversarial_qa_datasets = _prep_adversarial_qa(cache_dir=cache_dir, use_auth_token=use_auth_token)
+
+    # Has train
+    synqa_datasets = _prep_synqa(cache_dir=cache_dir, use_auth_token=use_auth_token)
+
+    # Construct BlendQA
     train = concatenate_datasets(
         [
             mrqa_datasets["train"],
@@ -110,8 +197,8 @@ def get_qablend(
     )
     validation = concatenate_datasets(
         [
-            ropes_datasets["validation"],
             mrqa_datasets["validation"],
+            ropes_datasets["validation"],
             squad_v2_datasets["validation"],
             adversarial_qa_datasets["validation"],
             # synqa_datasets["validation"]  # Doesn't exist
