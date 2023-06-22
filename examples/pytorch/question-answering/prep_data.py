@@ -265,6 +265,8 @@ def _prep_ropes(
 def _prep_squad_v2(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
+    preprocessing_num_workers: int = 1,
+    overwrite_cache: bool = False,
 ):
     # Has train, validation
     squad_v2_datasets = load_dataset(
@@ -274,12 +276,49 @@ def _prep_squad_v2(
         use_auth_token=True if use_auth_token else None,
     )
     squad_v2_datasets = _add_subset_column(dataset_dict=squad_v2_datasets, subset_name="SQuADV2")
+
+    def update_answers(example, idx):
+        text = example["answers"]["text"]
+        answer_start = example["answer_start"]
+        assert len(text) == len(answer_start), "Check that text and answer_start have same length"
+
+        # text_and_start = update_answers_column(
+        #     context=example["context"],
+        #     text=text,
+        #     answer_start=answer_start,
+        #     answer_end=answer_end,
+        # )
+        # text = text_and_start["text"]
+        # answer_start = text_and_start["answer_start"]
+
+        check_answer_in_context(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            idx=idx,
+            subset=example["subset"]
+        )
+
+        # example["answers"] = {"text": text, "answer_start": answer_start}
+        return example
+
+    # Map detected_answers to answers in the correct format
+    squad_v2_datasets = squad_v2_datasets.map(
+        update_answers,
+        with_indices=True,
+        num_proc=preprocessing_num_workers,
+        load_from_cache_file=not overwrite_cache,
+        desc="Checking SQuADV2",
+    )
+
     return squad_v2_datasets
 
 
 def _prep_adversarial_qa(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
+    preprocessing_num_workers: int = 1,
+    overwrite_cache: bool = False,
 ):
     # Has train, validation, test
     adversarial_qa_datasets = load_dataset(
@@ -291,12 +330,49 @@ def _prep_adversarial_qa(
     # Remove extra column
     adversarial_qa_datasets.remove_columns("metadata")
     adversarial_qa_datasets = _add_subset_column(dataset_dict=adversarial_qa_datasets, subset_name="adversarialQA")
+
+    def update_answers(example, idx):
+        text = example["answers"]["text"]
+        answer_start = example["answer_start"]
+        assert len(text) == len(answer_start), "Check that text and answer_start have same length"
+
+        # text_and_start = update_answers_column(
+        #     context=example["context"],
+        #     text=text,
+        #     answer_start=answer_start,
+        #     answer_end=answer_end,
+        # )
+        # text = text_and_start["text"]
+        # answer_start = text_and_start["answer_start"]
+
+        check_answer_in_context(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            idx=idx,
+            subset=example["subset"]
+        )
+
+        # example["answers"] = {"text": text, "answer_start": answer_start}
+        return example
+
+    # Map detected_answers to answers in the correct format
+    adversarial_qa_datasets = adversarial_qa_datasets.map(
+        update_answers,
+        with_indices=True,
+        num_proc=preprocessing_num_workers,
+        load_from_cache_file=not overwrite_cache,
+        desc="Checking adversarialQA",
+    )
+
     return adversarial_qa_datasets
 
 
 def _prep_synqa(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
+    preprocessing_num_workers: int = 1,
+    overwrite_cache: bool = False,
 ):
     synqa_datasets = load_dataset(
         "mbartolo/synQA",
@@ -305,6 +381,41 @@ def _prep_synqa(
         use_auth_token=True if use_auth_token else None,
     )
     synqa_datasets = _add_subset_column(dataset_dict=synqa_datasets, subset_name="synQA")
+
+    def update_answers(example, idx):
+        text = example["answers"]["text"]
+        answer_start = example["answer_start"]
+        assert len(text) == len(answer_start), "Check that text and answer_start have same length"
+
+        # text_and_start = update_answers_column(
+        #     context=example["context"],
+        #     text=text,
+        #     answer_start=answer_start,
+        #     answer_end=answer_end,
+        # )
+        # text = text_and_start["text"]
+        # answer_start = text_and_start["answer_start"]
+
+        check_answer_in_context(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            idx=idx,
+            subset=example["subset"]
+        )
+
+        # example["answers"] = {"text": text, "answer_start": answer_start}
+        return example
+
+    # Map detected_answers to answers in the correct format
+    synqa_datasets = synqa_datasets.map(
+        update_answers,
+        with_indices=True,
+        num_proc=preprocessing_num_workers,
+        load_from_cache_file=not overwrite_cache,
+        desc="Checking synQA",
+    )
+
     return synqa_datasets
 
 
@@ -341,12 +452,12 @@ def get_blendqa(
     )
 
     # ROPES dataset
-    ropes_datasets = _prep_ropes(
-        cache_dir=cache_dir,
-        use_auth_token=use_auth_token,
-        preprocessing_num_workers=preprocessing_num_workers,
-        overwrite_cache=overwrite_cache
-    )
+    # ropes_datasets = _prep_ropes(
+    #     cache_dir=cache_dir,
+    #     use_auth_token=use_auth_token,
+    #     preprocessing_num_workers=preprocessing_num_workers,
+    #     overwrite_cache=overwrite_cache
+    # )
 
     # SQuADV2 Dataset
     # Has train, validation
@@ -363,7 +474,7 @@ def get_blendqa(
     train = concatenate_datasets(
         [
             mrqa_datasets["train"],
-            ropes_datasets["train"],
+            # ropes_datasets["train"],
             squad_v2_datasets["train"],
             adversarial_qa_datasets["train"],
             synqa_datasets["train"]
@@ -372,7 +483,7 @@ def get_blendqa(
     validation = concatenate_datasets(
         [
             mrqa_datasets["validation"],
-            ropes_datasets["validation"],
+            # ropes_datasets["validation"],
             squad_v2_datasets["validation"],
             adversarial_qa_datasets["validation"],
             # synqa_datasets["validation"]  # Doesn't exist
@@ -380,7 +491,7 @@ def get_blendqa(
     )
     test = concatenate_datasets(
         [
-            ropes_datasets["test"],
+            # ropes_datasets["test"],
             mrqa_datasets["test"],
             adversarial_qa_datasets["test"],
             # squad_v2_datasets["test"],  # N/A
