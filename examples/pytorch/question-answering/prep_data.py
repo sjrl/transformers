@@ -279,7 +279,7 @@ def _prep_squad_v2(
 
     def update_answers(example, idx):
         text = example["answers"]["text"]
-        answer_start = example["answer_start"]
+        answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
 
         # text_and_start = update_answers_column(
@@ -333,7 +333,7 @@ def _prep_adversarial_qa(
 
     def update_answers(example, idx):
         text = example["answers"]["text"]
-        answer_start = example["answer_start"]
+        answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
 
         # text_and_start = update_answers_column(
@@ -384,7 +384,7 @@ def _prep_synqa(
 
     def update_answers(example, idx):
         text = example["answers"]["text"]
-        answer_start = example["answer_start"]
+        answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
 
         # text_and_start = update_answers_column(
