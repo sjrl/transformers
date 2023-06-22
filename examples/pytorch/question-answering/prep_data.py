@@ -2,7 +2,7 @@ import re
 import string
 from typing import Optional, List
 
-from datasets import load_dataset, concatenate_datasets, DatasetDict
+from datasets import load_dataset, concatenate_datasets, DatasetDict, Sequence, Value
 
 
 def normalize_answer(s):
@@ -34,8 +34,8 @@ def update_answer_start(
 ):
     # Wrong start
     updated_text = []
-    updated_answer_start = []
-    updated_answer_end = []
+    updated_answer_start: List[int] = []
+    updated_answer_end: List[int] = []
     for old_start, old_end, t in zip(answer_start, answer_end, text):
         matches = []
         for m in re.finditer(re.escape(t), context, re.IGNORECASE):
@@ -49,8 +49,8 @@ def update_answer_start(
         if len(matches) >= 1:
             abs_diff = [abs(m[0] - old_start) for m in matches]
             idx = abs_diff.index(min(abs_diff))
-            new_start = matches[idx][0]
-            new_end = matches[idx][1]
+            new_start = int(matches[idx][0])
+            new_end = int(matches[idx][1])
             updated_answer_start.append(new_start)
             updated_answer_end.append(new_end)
             updated_text.append(context[new_start:new_end])
@@ -171,8 +171,8 @@ def _prep_mrqa(
 
     def update_answers(example, idx):
         text = example["detected_answers"]["text"]
-        answer_start = [x["start"][0] for x in example["detected_answers"]["char_spans"]]
-        answer_end = [x["end"][0] for x in example["detected_answers"]["char_spans"]]
+        answer_start = [int(x["start"][0]) for x in example["detected_answers"]["char_spans"]]
+        answer_end = [int(x["end"][0]) for x in example["detected_answers"]["char_spans"]]
 
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
         text_and_start = update_answers_column(
@@ -204,6 +204,7 @@ def _prep_mrqa(
         load_from_cache_file=not overwrite_cache,
         desc="Formatting MRQA",
     )
+    mrqa_datasets = mrqa_datasets.cast_column("answers", Sequence(feature={'text': Value(dtype='string', id=None), 'answer_start': Value(dtype='int32', id=None)}, length=-1, id=None))
     return mrqa_datasets
 
 
@@ -276,6 +277,7 @@ def _prep_squad_v2(
         use_auth_token=True if use_auth_token else None,
     )
     squad_v2_datasets = _add_subset_column(dataset_dict=squad_v2_datasets, subset_name="SQuADV2")
+    squad_v2_datasets = squad_v2_datasets.remove_columns("title")
 
     def update_answers(example, idx):
         text = example["answers"]["text"]
@@ -328,7 +330,8 @@ def _prep_adversarial_qa(
         use_auth_token=True if use_auth_token else None,
     )
     # Remove extra column
-    adversarial_qa_datasets.remove_columns("metadata")
+    adversarial_qa_datasets = adversarial_qa_datasets.remove_columns("metadata")
+    adversarial_qa_datasets = adversarial_qa_datasets.remove_columns("title")
     adversarial_qa_datasets = _add_subset_column(dataset_dict=adversarial_qa_datasets, subset_name="adversarialQA")
 
     def update_answers(example, idx):
@@ -381,6 +384,7 @@ def _prep_synqa(
         use_auth_token=True if use_auth_token else None,
     )
     synqa_datasets = _add_subset_column(dataset_dict=synqa_datasets, subset_name="synQA")
+    synqa_datasets = synqa_datasets.remove_columns("title")
 
     def update_answers(example, idx):
         text = example["answers"]["text"]
@@ -474,26 +478,26 @@ def get_blendqa(
     train = concatenate_datasets(
         [
             mrqa_datasets["train"],
-            # ropes_datasets["train"],
             squad_v2_datasets["train"],
             adversarial_qa_datasets["train"],
-            synqa_datasets["train"]
+            synqa_datasets["train"],
+            # ropes_datasets["train"],
         ]
     )
     validation = concatenate_datasets(
         [
             mrqa_datasets["validation"],
-            # ropes_datasets["validation"],
             squad_v2_datasets["validation"],
             adversarial_qa_datasets["validation"],
+            # ropes_datasets["validation"],
             # synqa_datasets["validation"]  # Doesn't exist
         ]
     )
     test = concatenate_datasets(
         [
-            # ropes_datasets["test"],
             mrqa_datasets["test"],
             adversarial_qa_datasets["test"],
+            # ropes_datasets["test"],
             # squad_v2_datasets["test"],  # N/A
             # synqa_datasets["test"]  # Doesn't exist
         ]
