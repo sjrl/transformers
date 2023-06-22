@@ -69,10 +69,12 @@ def update_squad_normalization(
     answer_start: List[int],
     answer_end: List[int],
 ):
-    # SQuAD normalization
-    # 1. Check if text + context_ans match after normalization
-    # 2. If yes then replace text with context_ans
-    # 3. If no then we have normalization + wrong start
+    """
+    SQuAD normalization
+    1. Check if text + answer from the context match after normalization
+    2. If yes then replace text with the answer from the context
+    3. If no then we can still have normalization + wrong start
+    """
     updated_text = []
     for start, end, text in zip(answer_start, answer_end, text):
         context_ans = context[start:end]
@@ -97,17 +99,18 @@ def update_answers_column(
     if all([t == context[start:start + len(t)] for start, t in zip(answer_start, text)]):
         return {"text": text, "answer_start": answer_start}
 
-    # Answers differ due to squad normalization
+    # Answers can differ due to squad normalization
     updated_text = update_squad_normalization(
         context=context, text=text, answer_start=answer_start, answer_end=answer_end
     )
 
-    # Wrong start
+    # Some answers have the wrong start
     updated_text, updated_answer_start, updated_answer_end = update_answer_start(
         context=context, text=updated_text, answer_start=answer_start, answer_end=answer_end,
     )
 
-    # Answers differ due to squad normalization
+    # TODO Check if this is really necessary
+    # After updating answer start recheck if answers differ due to squad normalization
     updated_text = update_squad_normalization(
         context=context, text=updated_text, answer_start=updated_answer_start, answer_end=updated_answer_end
     )
@@ -122,6 +125,9 @@ def check_answer_in_context(
     idx: int,
     subset: str,
 ):
+    """
+    Checks if the answer (text) is exactly matches the one found in the context.
+    """
     not_found_text = []
     not_found_context_answers = []
     for start, t in zip(answer_start, text):
@@ -204,7 +210,16 @@ def _prep_mrqa(
         load_from_cache_file=not overwrite_cache,
         desc="Formatting MRQA",
     )
-    mrqa_datasets = mrqa_datasets.cast_column("answers", Sequence(feature={'text': Value(dtype='string', id=None), 'answer_start': Value(dtype='int32', id=None)}, length=-1, id=None))
+    mrqa_datasets = mrqa_datasets.cast_column(
+        "answers",
+        Sequence(
+            feature={
+                'text': Value(dtype='string', id=None),
+                'answer_start': Value(dtype='int32', id=None)
+            },
+            length=-1, id=None
+        )
+    )
     return mrqa_datasets
 
 
@@ -221,7 +236,7 @@ def _prep_ropes(
         cache_dir=cache_dir,
         use_auth_token=True if use_auth_token else None,
     )
-    # TODO Check average context length to know how big context length for the model should be.
+
     # Create context string
     ropes_datasets = ropes_datasets.map(
         lambda example: {"context": example["background"] + "\n\n " + example["situation"]},
@@ -232,34 +247,49 @@ def _prep_ropes(
         desc="Creating context for ROPES",
     )
 
-    def prepare_answers(examples):
-        updated_examples = []
-        for example in examples:
-            context = example["context"]
+    def prepare_answers(example):
+        # TODO Update answers to include answers_start and duplicates if answer appears more than once in the text.
+        # Find all answer_starts
+        answer_start = []
+        context = example["context"]
+        for text in example["answers"]["text"]:
+            answer_start.append(context.index(text))
 
-            # Find all answer_starts
-            answer_start = []
-            for text in example["answers"]["text"]:
-                answer_start.append(context.index(text))
+        # Construct new answers column
+        example["answers"] = {
+            "text": example["answers"]["text"],
+            "answer_start": answer_start
+        }
+        return example
 
-            # Construct new answers column
-            example["answers"] = {
-                "text": example["answers"]["text"],
-                "answer_start": []
-            }
-            updated_examples.append(example)
-        return updated_examples
-
-    # TODO Update answers to include answers_start and duplicates if answer appears more than once in the text.
-    #      Will probably need a function instead of a lambda function
     ropes_datasets = ropes_datasets.map(
         prepare_answers,
-        batched=True,
         num_proc=preprocessing_num_workers,
         load_from_cache_file=not overwrite_cache,
         desc="Updating answers for ROPES",
     )
     ropes_datasets = _add_subset_column(dataset_dict=ropes_datasets, subset_name="ROPES")
+
+    def check_answers(example, idx):
+        text = example["answers"]["text"]
+        answer_start = example["answers"]["answer_start"]
+        assert len(text) == len(answer_start), "Check that text and answer_start have same length"
+        check_answer_in_context(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            idx=idx,
+            subset=example["subset"]
+        )
+        return example
+    ropes_datasets = ropes_datasets.map(
+        check_answers,
+        with_indices=True,
+        num_proc=preprocessing_num_workers,
+        load_from_cache_file=not overwrite_cache,
+        desc="Checking ROPES",
+    )
+
     return ropes_datasets
 
 
@@ -279,20 +309,10 @@ def _prep_squad_v2(
     squad_v2_datasets = _add_subset_column(dataset_dict=squad_v2_datasets, subset_name="SQuADV2")
     squad_v2_datasets = squad_v2_datasets.remove_columns("title")
 
-    def update_answers(example, idx):
+    def check_answers(example, idx):
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-
-        # text_and_start = update_answers_column(
-        #     context=example["context"],
-        #     text=text,
-        #     answer_start=answer_start,
-        #     answer_end=answer_end,
-        # )
-        # text = text_and_start["text"]
-        # answer_start = text_and_start["answer_start"]
-
         check_answer_in_context(
             context=example["context"],
             text=text,
@@ -300,13 +320,9 @@ def _prep_squad_v2(
             idx=idx,
             subset=example["subset"]
         )
-
-        # example["answers"] = {"text": text, "answer_start": answer_start}
         return example
-
-    # Map detected_answers to answers in the correct format
     squad_v2_datasets = squad_v2_datasets.map(
-        update_answers,
+        check_answers,
         with_indices=True,
         num_proc=preprocessing_num_workers,
         load_from_cache_file=not overwrite_cache,
@@ -334,20 +350,10 @@ def _prep_adversarial_qa(
     adversarial_qa_datasets = adversarial_qa_datasets.remove_columns("title")
     adversarial_qa_datasets = _add_subset_column(dataset_dict=adversarial_qa_datasets, subset_name="adversarialQA")
 
-    def update_answers(example, idx):
+    def check_answers(example, idx):
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-
-        # text_and_start = update_answers_column(
-        #     context=example["context"],
-        #     text=text,
-        #     answer_start=answer_start,
-        #     answer_end=answer_end,
-        # )
-        # text = text_and_start["text"]
-        # answer_start = text_and_start["answer_start"]
-
         check_answer_in_context(
             context=example["context"],
             text=text,
@@ -355,13 +361,9 @@ def _prep_adversarial_qa(
             idx=idx,
             subset=example["subset"]
         )
-
-        # example["answers"] = {"text": text, "answer_start": answer_start}
         return example
-
-    # Map detected_answers to answers in the correct format
     adversarial_qa_datasets = adversarial_qa_datasets.map(
-        update_answers,
+        check_answers,
         with_indices=True,
         num_proc=preprocessing_num_workers,
         load_from_cache_file=not overwrite_cache,
@@ -386,19 +388,10 @@ def _prep_synqa(
     synqa_datasets = _add_subset_column(dataset_dict=synqa_datasets, subset_name="synQA")
     synqa_datasets = synqa_datasets.remove_columns("title")
 
-    def update_answers(example, idx):
+    def check_answers(example, idx):
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-
-        # text_and_start = update_answers_column(
-        #     context=example["context"],
-        #     text=text,
-        #     answer_start=answer_start,
-        #     answer_end=answer_end,
-        # )
-        # text = text_and_start["text"]
-        # answer_start = text_and_start["answer_start"]
 
         check_answer_in_context(
             context=example["context"],
@@ -408,12 +401,11 @@ def _prep_synqa(
             subset=example["subset"]
         )
 
-        # example["answers"] = {"text": text, "answer_start": answer_start}
         return example
 
     # Map detected_answers to answers in the correct format
     synqa_datasets = synqa_datasets.map(
-        update_answers,
+        check_answers,
         with_indices=True,
         num_proc=preprocessing_num_workers,
         load_from_cache_file=not overwrite_cache,
@@ -423,6 +415,8 @@ def _prep_synqa(
     return synqa_datasets
 
 
+# TODO Check average context length to know how big context length for the model should be.
+#      According to MRQA page, can expect context lengths of up to 800 tokens.
 # BlendQA
 def get_blendqa(
     cache_dir: Optional[str] = None,
