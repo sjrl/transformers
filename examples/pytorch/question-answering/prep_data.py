@@ -84,7 +84,6 @@ def update_squad_normalization(
             updated_text.append(context_ans_1)
         else:
             updated_text.append(text)
-
     return updated_text
 
 
@@ -116,6 +115,26 @@ def update_answers_column(
     return {"text": updated_text, "answer_start": updated_answer_start}
 
 
+def check_answer_in_context(
+    context: str,
+    text: List[str],
+    answer_start: List[int],
+    idx: int,
+    subset: str,
+):
+    not_found_text = []
+    not_found_context_answers = []
+    for start, t in zip(answer_start, text):
+        context_ans = context[start:start + len(t)]
+        if t != context_ans:
+            not_found_context_answers.append(context_ans)
+            not_found_text.append(t)
+
+    if len(not_found_text) > 0:
+        for t, c in zip(not_found_text, not_found_context_answers):
+            print(f"Idx: {idx} Subset: {subset} Answer: '{t}' vs. '{c}'")
+
+
 def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
     """
     Add the "subset" column to each split in `dataset_dict` with value `subset_name`.
@@ -128,14 +147,15 @@ def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
     return DatasetDict(result)
 
 
+# TODO Consider handling the case of multiple matches.
+#      Start with looking at some examples to see what we are working with.
+# TODO Remove special tokens [DOC], [TLE] and [PAR]. They seem to be inconsistently applied
 def _prep_mrqa(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
     preprocessing_num_workers: int = 1,
     overwrite_cache: bool = False,
 ):
-    # TODO Alternatively I could download the mrqa datasets repo and modify the mrqa.py script to output the desired format.
-    #      This could end up being much faster if this map takes awhile ...
     mrqa_datasets = load_dataset(
         "mrqa",
         None,
@@ -148,14 +168,37 @@ def _prep_mrqa(
     mrqa_datasets = mrqa_datasets.remove_columns(["context_tokens", "question_tokens", "answers"])
     # Rename columns
     mrqa_datasets = mrqa_datasets.rename_column("qid", "id")
+
+    def update_answers(example, idx):
+        text = example["detected_answers"]["text"]
+        answer_start = [x["start"][0] for x in example["detected_answers"]["char_spans"]]
+        answer_end = [x["end"][0] for x in example["detected_answers"]["char_spans"]]
+
+        assert len(text) == len(answer_start), "Check that text and answer_start have same length"
+        text_and_start = update_answers_column(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            answer_end=answer_end,
+        )
+        text = text_and_start["text"]
+        answer_start = text_and_start["answer_start"]
+
+        check_answer_in_context(
+            context=example["context"],
+            text=text,
+            answer_start=answer_start,
+            idx=idx,
+            subset=example["subset"]
+        )
+
+        example["answers"] = {"text": text, "answer_start": answer_start}
+        return example
+
     # Map detected_answers to answers in the correct format
     mrqa_datasets = mrqa_datasets.map(
-        lambda example: {
-            "answers": {
-                "text": example["detected_answers"]["text"],
-                "answer_start": [x["start"][0] for x in example["detected_answers"]["char_spans"]]
-            }
-        },
+        update_answers,
+        with_indices=True,
         num_proc=preprocessing_num_workers,
         remove_columns=["detected_answers"],
         load_from_cache_file=not overwrite_cache,
