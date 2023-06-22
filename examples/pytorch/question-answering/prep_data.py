@@ -1,6 +1,119 @@
-from typing import Optional
+import re
+import string
+from typing import Optional, List
 
 from datasets import load_dataset, concatenate_datasets, DatasetDict
+
+
+def normalize_answer(s):
+    """Lower text and remove punctuation, articles and extra whitespace."""
+
+    def remove_articles(text):
+        return re.sub(r"\b(a|an|the)\b", " ", text)
+
+    def white_space_fix(text):
+        return " ".join(text.split())
+
+    def remove_punc(text):
+        # Handle "-" symbol separately
+        tmp = text.replace("-", " ")
+        exclude = set(string.punctuation)
+        return "".join(ch for ch in tmp if ch not in exclude)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+
+def update_answer_start(
+    context: str,
+    text: List[str],
+    answer_start: List[int],
+    answer_end: List[int],
+):
+    # Wrong start
+    updated_text = []
+    updated_answer_start = []
+    updated_answer_end = []
+    for old_start, old_end, t in zip(answer_start, answer_end, text):
+        matches = []
+        for m in re.finditer(re.escape(t), context, re.IGNORECASE):
+            matches.append((m.start(), m.end()))
+
+        # TODO Come back to later
+        # if len(matches) > 1:
+        #     print("Multiple matches found")
+
+        # Only take match start closest to answer_start
+        if len(matches) >= 1:
+            abs_diff = [abs(m[0] - old_start) for m in matches]
+            idx = abs_diff.index(min(abs_diff))
+            new_start = matches[idx][0]
+            new_end = matches[idx][1]
+            updated_answer_start.append(new_start)
+            updated_answer_end.append(new_end)
+            updated_text.append(context[new_start:new_end])
+        else:
+            # Sometimes no matches are found (due to squad normalization)
+            updated_answer_start.append(old_start)
+            updated_answer_end.append(old_end)
+            updated_text.append(t)
+
+    return updated_text, updated_answer_start, updated_answer_end
+
+
+def update_squad_normalization(
+    context: str,
+    text: List[str],
+    answer_start: List[int],
+    answer_end: List[int],
+):
+    # SQuAD normalization
+    # 1. Check if text + context_ans match after normalization
+    # 2. If yes then replace text with context_ans
+    # 3. If no then we have normalization + wrong start
+    updated_text = []
+    for start, end, text in zip(answer_start, answer_end, text):
+        context_ans = context[start:end]
+        context_ans_1 = context[start:end+1]
+
+        if normalize_answer(text) == normalize_answer(context_ans):
+            updated_text.append(context_ans)
+        elif normalize_answer(text) == normalize_answer(context_ans_1):
+            updated_text.append(context_ans_1)
+        else:
+            updated_text.append(text)
+
+    return updated_text
+
+
+def update_answers_column(
+    context: str,
+    text: List[str],
+    answer_start: List[int],
+    answer_end: List[int],
+):
+    # Skip if all answers already found
+    if all([t == context[start:start + len(t)] for start, t in zip(answer_start, text)]):
+        return {"text": text, "answer_start": answer_start}
+
+    # Answers differ due to squad normalization
+    updated_text = update_squad_normalization(
+        context=context, text=text, answer_start=answer_start, answer_end=answer_end
+    )
+
+    # Wrong start
+    updated_text, updated_answer_start, updated_answer_end = update_answer_start(
+        context=context, text=updated_text, answer_start=answer_start, answer_end=answer_end,
+    )
+
+    # Answers differ due to squad normalization
+    updated_text = update_squad_normalization(
+        context=context, text=updated_text, answer_start=updated_answer_start, answer_end=updated_answer_end
+    )
+
+    return {"text": updated_text, "answer_start": updated_answer_start}
 
 
 def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
@@ -36,14 +149,13 @@ def _prep_mrqa(
     # Rename columns
     mrqa_datasets = mrqa_datasets.rename_column("qid", "id")
     # Map detected_answers to answers in the correct format
-    mrqa_datasets.map(
+    mrqa_datasets = mrqa_datasets.map(
         lambda example: {
             "answers": {
                 "text": example["detected_answers"]["text"],
-                "answer_start": [x["start"] for x in example["detected_answers"]["char_spans"]]
+                "answer_start": [x["start"][0] for x in example["detected_answers"]["char_spans"]]
             }
         },
-        batched=True,
         num_proc=preprocessing_num_workers,
         remove_columns=["detected_answers"],
         load_from_cache_file=not overwrite_cache,
@@ -67,18 +179,37 @@ def _prep_ropes(
     )
     # TODO Check average context length to know how big context length for the model should be.
     # Create context string
-    ropes_datasets.map(
-        lambda example: {"context": example["background"] + " " + example["situation"]},
+    ropes_datasets = ropes_datasets.map(
+        lambda example: {"context": example["background"] + "\n\n " + example["situation"]},
         batched=True,
         num_proc=preprocessing_num_workers,
         remove_columns=["background", "situation"],
         load_from_cache_file=not overwrite_cache,
         desc="Creating context for ROPES",
     )
+
+    def prepare_answers(examples):
+        updated_examples = []
+        for example in examples:
+            context = example["context"]
+
+            # Find all answer_starts
+            answer_start = []
+            for text in example["answers"]["text"]:
+                answer_start.append(context.index(text))
+
+            # Construct new answers column
+            example["answers"] = {
+                "text": example["answers"]["text"],
+                "answer_start": []
+            }
+            updated_examples.append(example)
+        return updated_examples
+
     # TODO Update answers to include answers_start and duplicates if answer appears more than once in the text.
     #      Will probably need a function instead of a lambda function
-    ropes_datasets.map(
-        lambda example: {"answers": example["answers"]},
+    ropes_datasets = ropes_datasets.map(
+        prepare_answers,
         batched=True,
         num_proc=preprocessing_num_workers,
         load_from_cache_file=not overwrite_cache,
