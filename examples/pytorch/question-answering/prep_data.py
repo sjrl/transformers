@@ -1,6 +1,6 @@
 import re
 import string
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from datasets import load_dataset, concatenate_datasets, DatasetDict, Sequence, Value
 
@@ -41,7 +41,7 @@ def update_answer_start(
         for m in re.finditer(re.escape(t), context, re.IGNORECASE):
             matches.append((m.start(), m.end()))
 
-        # TODO Come back to later
+        # TODO Maybe come back to later
         # if len(matches) > 1:
         #     print("Multiple matches found")
 
@@ -115,7 +115,7 @@ def update_answers_column(
         context=context, text=updated_text, answer_start=updated_answer_start, answer_end=updated_answer_end
     )
 
-    return {"text": updated_text, "answer_start": updated_answer_start}
+    return updated_text, updated_answer_start
 
 
 def check_answer_in_context(
@@ -124,10 +124,12 @@ def check_answer_in_context(
     answer_start: List[int],
     idx: int,
     subset: str,
-):
+) -> Tuple:
     """
     Checks if the answer (text) is exactly matches the one found in the context.
     """
+    found_text = []
+    found_answer_start = []
     not_found_text = []
     not_found_context_answers = []
     for start, t in zip(answer_start, text):
@@ -135,10 +137,15 @@ def check_answer_in_context(
         if t != context_ans:
             not_found_context_answers.append(context_ans)
             not_found_text.append(t)
+        else:
+            found_text.append(t)
+            found_answer_start.append(start)
 
     if len(not_found_text) > 0:
         for t, c in zip(not_found_text, not_found_context_answers):
             print(f"Idx: {idx} Subset: {subset} Answer: '{t}' vs. '{c}'")
+
+    return found_text, found_answer_start
 
 
 def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
@@ -154,7 +161,6 @@ def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
 
 
 # TODO Consider handling the case of multiple matches.
-#      Start with looking at some examples to see what we are working with.
 # TODO Remove special tokens [DOC], [TLE] and [PAR]. They seem to be inconsistently applied
 def _prep_mrqa(
     cache_dir: Optional[str] = None,
@@ -179,25 +185,20 @@ def _prep_mrqa(
         text = example["detected_answers"]["text"]
         answer_start = [int(x["start"][0]) for x in example["detected_answers"]["char_spans"]]
         answer_end = [int(x["end"][0]) for x in example["detected_answers"]["char_spans"]]
-
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-        text_and_start = update_answers_column(
+        text, answer_start = update_answers_column(
             context=example["context"],
             text=text,
             answer_start=answer_start,
             answer_end=answer_end,
         )
-        text = text_and_start["text"]
-        answer_start = text_and_start["answer_start"]
-
-        check_answer_in_context(
+        text, answer_start = check_answer_in_context(
             context=example["context"],
             text=text,
             answer_start=answer_start,
             idx=idx,
-            subset=example["subset"]
+            subset=example["subset"],
         )
-
         example["answers"] = {"text": text, "answer_start": answer_start}
         return example
 
@@ -210,6 +211,11 @@ def _prep_mrqa(
         load_from_cache_file=not overwrite_cache,
         desc="Formatting MRQA",
     )
+
+    # Filter out examples that have an empty text field
+    mrqa_datasets = mrqa_datasets.filter(lambda example: len(example["answers"]["text"]) > 0)
+
+    # Cast answer_start column to correct type
     mrqa_datasets = mrqa_datasets.cast_column(
         "answers",
         Sequence(
@@ -274,7 +280,7 @@ def _prep_ropes(
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-        check_answer_in_context(
+        _ = check_answer_in_context(
             context=example["context"],
             text=text,
             answer_start=answer_start,
@@ -313,7 +319,7 @@ def _prep_squad_v2(
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-        check_answer_in_context(
+        _ = check_answer_in_context(
             context=example["context"],
             text=text,
             answer_start=answer_start,
@@ -354,7 +360,7 @@ def _prep_adversarial_qa(
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-        check_answer_in_context(
+        _ = check_answer_in_context(
             context=example["context"],
             text=text,
             answer_start=answer_start,
@@ -392,15 +398,13 @@ def _prep_synqa(
         text = example["answers"]["text"]
         answer_start = example["answers"]["answer_start"]
         assert len(text) == len(answer_start), "Check that text and answer_start have same length"
-
-        check_answer_in_context(
+        _ = check_answer_in_context(
             context=example["context"],
             text=text,
             answer_start=answer_start,
             idx=idx,
             subset=example["subset"]
         )
-
         return example
 
     # Map detected_answers to answers in the correct format
