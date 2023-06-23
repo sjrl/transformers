@@ -94,10 +94,10 @@ def update_answers_column(
     text: List[str],
     answer_start: List[int],
     answer_end: List[int],
-):
+) -> Tuple:
     # Skip if all answers already found
     if all([t == context[start:start + len(t)] for start, t in zip(answer_start, text)]):
-        return {"text": text, "answer_start": answer_start}
+        return text, answer_start
 
     # Answers can differ due to squad normalization
     updated_text = update_squad_normalization(
