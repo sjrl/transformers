@@ -331,7 +331,7 @@ def main():
     if data_args.dataset_name is not None:
         if data_args.dataset_name == "BlendQA":
             raw_datasets = get_blendqa(
-                cache_dir=model_args.cache_dir,  # TODO Should use a different cache_dir, this operation is not model specific
+                cache_dir=model_args.cache_dir,
                 use_auth_token=True if model_args.use_auth_token else None,
                 preprocessing_num_workers=data_args.preprocessing_num_workers,
                 overwrite_cache=data_args.overwrite_cache,

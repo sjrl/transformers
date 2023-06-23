@@ -161,7 +161,6 @@ def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
 
 
 # TODO Consider handling the case of multiple matches.
-# TODO Remove special tokens [DOC], [TLE] and [PAR]. They seem to be inconsistently applied
 def _prep_mrqa(
     cache_dir: Optional[str] = None,
     use_auth_token: bool = False,
@@ -174,12 +173,27 @@ def _prep_mrqa(
         cache_dir=cache_dir,
         use_auth_token=True if use_auth_token else None,
     )
-    # Filter out squad datapoints
+    # Filter out squad datapoints (adding back SQuADV2 later)
     mrqa_datasets = mrqa_datasets.filter(lambda example: example["subset"] != "SQuAD")
     # Remove unneeded columns
     mrqa_datasets = mrqa_datasets.remove_columns(["context_tokens", "question_tokens", "answers"])
     # Rename columns
     mrqa_datasets = mrqa_datasets.rename_column("qid", "id")
+
+    # Remove special tokens [DOC], [TLE] and [PAR]. They are inconsistently applied
+    def remove_special_tokens_from_context(example):
+        context = example["context"]
+        context = context.replace("[DOC]", " " * 5)
+        context = context.replace("[TLE]", " " * 5)
+        context = context.replace("[PAR]", " " * 5)
+        example["context"] = context
+        return example
+    mrqa_datasets = mrqa_datasets.map(
+        remove_special_tokens_from_context,
+        num_proc=preprocessing_num_workers,
+        load_from_cache_file=not overwrite_cache,
+        desc="Formatting MRQA Context",
+    )
 
     def update_answers(example, idx):
         text = example["detected_answers"]["text"]
@@ -201,7 +215,6 @@ def _prep_mrqa(
         )
         example["answers"] = {"text": text, "answer_start": answer_start}
         return example
-
     # Map detected_answers to answers in the correct format
     mrqa_datasets = mrqa_datasets.map(
         update_answers,
@@ -209,7 +222,7 @@ def _prep_mrqa(
         num_proc=preprocessing_num_workers,
         remove_columns=["detected_answers"],
         load_from_cache_file=not overwrite_cache,
-        desc="Formatting MRQA",
+        desc="Formatting MRQA Answers",
     )
 
     # Filter out examples that have an empty text field
