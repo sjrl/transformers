@@ -213,7 +213,16 @@ def _prep_mrqa(
     )
 
     # Filter out examples that have an empty text field
+    bef_train_rows = mrqa_datasets["train"].num_rows
+    bef_valid_rows = mrqa_datasets["validation"].num_rows
+    bef_test_rows = mrqa_datasets["test"].num_rows
     mrqa_datasets = mrqa_datasets.filter(lambda example: len(example["answers"]["text"]) > 0)
+    train_rows = mrqa_datasets["train"].num_rows
+    valid_rows = mrqa_datasets["validation"].num_rows
+    test_rows = mrqa_datasets["test"].num_rows
+    print(f"Removed {bef_train_rows - train_rows} training rows")
+    print(f"Removed {bef_valid_rows - valid_rows} validation rows")
+    print(f"Removed {bef_test_rows - test_rows} test rows")
 
     # Cast answer_start column to correct type
     mrqa_datasets = mrqa_datasets.cast_column(
