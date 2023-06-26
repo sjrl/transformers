@@ -98,6 +98,7 @@ _import_structure = {
     "file_utils": [],
     "generation": ["GenerationConfig", "TextIteratorStreamer", "TextStreamer"],
     "hf_argparser": ["HfArgumentParser"],
+    "hyperparameter_search": [],
     "image_transforms": [],
     "integrations": [
         "is_clearml_available",
@@ -281,6 +282,10 @@ _import_structure = {
     "models.efficientformer": ["EFFICIENTFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP", "EfficientFormerConfig"],
     "models.efficientnet": ["EFFICIENTNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "EfficientNetConfig"],
     "models.electra": ["ELECTRA_PRETRAINED_CONFIG_ARCHIVE_MAP", "ElectraConfig", "ElectraTokenizer"],
+    "models.encodec": [
+        "ENCODEC_PRETRAINED_CONFIG_ARCHIVE_MAP",
+        "EncodecConfig",
+    ],
     "models.encoder_decoder": ["EncoderDecoderConfig"],
     "models.ernie": [
         "ERNIE_PRETRAINED_CONFIG_ARCHIVE_MAP",
@@ -825,6 +830,7 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["models.audio_spectrogram_transformer"].append("ASTFeatureExtractor")
+    _import_structure["models.encodec"].append("EncodecFeatureExtractor")
     _import_structure["models.mctct"].append("MCTCTFeatureExtractor")
     _import_structure["models.speech_to_text"].append("Speech2TextFeatureExtractor")
     _import_structure["models.speecht5"].append("SpeechT5FeatureExtractor")
@@ -965,6 +971,7 @@ else:
             "PhrasalConstraint",
             "PrefixConstrainedLogitsProcessor",
             "RepetitionPenaltyLogitsProcessor",
+            "SequenceBiasLogitsProcessor",
             "StoppingCriteria",
             "StoppingCriteriaList",
             "TemperatureLogitsWarper",
@@ -1022,6 +1029,7 @@ else:
     _import_structure["models.auto"].extend(
         [
             "MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING",
+            "MODEL_FOR_AUDIO_FRAME_CLASSIFICATION_MAPPING",
             "MODEL_FOR_AUDIO_XVECTOR_MAPPING",
             "MODEL_FOR_BACKBONE_MAPPING",
             "MODEL_FOR_CAUSAL_IMAGE_MODELING_MAPPING",
@@ -1045,6 +1053,7 @@ else:
             "MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING",
             "MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING",
             "MODEL_FOR_TABLE_QUESTION_ANSWERING_MAPPING",
+            "MODEL_FOR_TEXT_ENCODING_MAPPING",
             "MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING",
             "MODEL_FOR_UNIVERSAL_SEGMENTATION_MAPPING",
             "MODEL_FOR_VIDEO_CLASSIFICATION_MAPPING",
@@ -1079,6 +1088,7 @@ else:
             "AutoModelForSequenceClassification",
             "AutoModelForSpeechSeq2Seq",
             "AutoModelForTableQuestionAnswering",
+            "AutoModelForTextEncoding",
             "AutoModelForTokenClassification",
             "AutoModelForUniversalSegmentation",
             "AutoModelForVideoClassification",
@@ -1566,6 +1576,13 @@ else:
             "ElectraModel",
             "ElectraPreTrainedModel",
             "load_tf_weights_in_electra",
+        ]
+    )
+    _import_structure["models.encodec"].extend(
+        [
+            "ENCODEC_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "EncodecModel",
+            "EncodecPreTrainedModel",
         ]
     )
     _import_structure["models.encoder_decoder"].append("EncoderDecoderModel")
@@ -2955,11 +2972,13 @@ else:
     )
     _import_structure["models.auto"].extend(
         [
+            "TF_MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING",
             "TF_MODEL_FOR_CAUSAL_LM_MAPPING",
             "TF_MODEL_FOR_DOCUMENT_QUESTION_ANSWERING_MAPPING",
             "TF_MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING",
             "TF_MODEL_FOR_MASKED_IMAGE_MODELING_MAPPING",
             "TF_MODEL_FOR_MASKED_LM_MAPPING",
+            "TF_MODEL_FOR_MASK_GENERATION_MAPPING",
             "TF_MODEL_FOR_MULTIPLE_CHOICE_MAPPING",
             "TF_MODEL_FOR_NEXT_SENTENCE_PREDICTION_MAPPING",
             "TF_MODEL_FOR_PRETRAINING_MAPPING",
@@ -2969,6 +2988,7 @@ else:
             "TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING",
             "TF_MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING",
             "TF_MODEL_FOR_TABLE_QUESTION_ANSWERING_MAPPING",
+            "TF_MODEL_FOR_TEXT_ENCODING_MAPPING",
             "TF_MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING",
             "TF_MODEL_FOR_VISION_2_SEQ_MAPPING",
             "TF_MODEL_FOR_ZERO_SHOT_IMAGE_CLASSIFICATION_MAPPING",
@@ -2988,6 +3008,7 @@ else:
             "TFAutoModelForSequenceClassification",
             "TFAutoModelForSpeechSeq2Seq",
             "TFAutoModelForTableQuestionAnswering",
+            "TFAutoModelForTextEncoding",
             "TFAutoModelForTokenClassification",
             "TFAutoModelForVision2Seq",
             "TFAutoModelForZeroShotImageClassification",
@@ -3633,6 +3654,7 @@ else:
     )
     _import_structure["models.auto"].extend(
         [
+            "FLAX_MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING",
             "FLAX_MODEL_FOR_CAUSAL_LM_MAPPING",
             "FLAX_MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING",
             "FLAX_MODEL_FOR_MASKED_LM_MAPPING",
@@ -4102,6 +4124,10 @@ if TYPE_CHECKING:
     from .models.efficientformer import EFFICIENTFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP, EfficientFormerConfig
     from .models.efficientnet import EFFICIENTNET_PRETRAINED_CONFIG_ARCHIVE_MAP, EfficientNetConfig
     from .models.electra import ELECTRA_PRETRAINED_CONFIG_ARCHIVE_MAP, ElectraConfig, ElectraTokenizer
+    from .models.encodec import (
+        ENCODEC_PRETRAINED_CONFIG_ARCHIVE_MAP,
+        EncodecConfig,
+    )
     from .models.encoder_decoder import EncoderDecoderConfig
     from .models.ernie import ERNIE_PRETRAINED_CONFIG_ARCHIVE_MAP, ErnieConfig
     from .models.ernie_m import ERNIE_M_PRETRAINED_CONFIG_ARCHIVE_MAP, ErnieMConfig
@@ -4600,6 +4626,7 @@ if TYPE_CHECKING:
         from .utils.dummy_speech_objects import *
     else:
         from .models.audio_spectrogram_transformer import ASTFeatureExtractor
+        from .models.encodec import EncodecFeatureExtractor
         from .models.mctct import MCTCTFeatureExtractor
         from .models.speech_to_text import Speech2TextFeatureExtractor
         from .models.speecht5 import SpeechT5FeatureExtractor
@@ -4716,6 +4743,7 @@ if TYPE_CHECKING:
             PhrasalConstraint,
             PrefixConstrainedLogitsProcessor,
             RepetitionPenaltyLogitsProcessor,
+            SequenceBiasLogitsProcessor,
             StoppingCriteria,
             StoppingCriteriaList,
             TemperatureLogitsWarper,
@@ -4761,6 +4789,7 @@ if TYPE_CHECKING:
         )
         from .models.auto import (
             MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
+            MODEL_FOR_AUDIO_FRAME_CLASSIFICATION_MAPPING,
             MODEL_FOR_AUDIO_XVECTOR_MAPPING,
             MODEL_FOR_BACKBONE_MAPPING,
             MODEL_FOR_CAUSAL_IMAGE_MODELING_MAPPING,
@@ -4784,6 +4813,7 @@ if TYPE_CHECKING:
             MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
             MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
             MODEL_FOR_TABLE_QUESTION_ANSWERING_MAPPING,
+            MODEL_FOR_TEXT_ENCODING_MAPPING,
             MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING,
             MODEL_FOR_UNIVERSAL_SEGMENTATION_MAPPING,
             MODEL_FOR_VIDEO_CLASSIFICATION_MAPPING,
@@ -4818,6 +4848,7 @@ if TYPE_CHECKING:
             AutoModelForSequenceClassification,
             AutoModelForSpeechSeq2Seq,
             AutoModelForTableQuestionAnswering,
+            AutoModelForTextEncoding,
             AutoModelForTokenClassification,
             AutoModelForUniversalSegmentation,
             AutoModelForVideoClassification,
@@ -5211,6 +5242,11 @@ if TYPE_CHECKING:
             ElectraModel,
             ElectraPreTrainedModel,
             load_tf_weights_in_electra,
+        )
+        from .models.encodec import (
+            ENCODEC_PRETRAINED_MODEL_ARCHIVE_LIST,
+            EncodecModel,
+            EncodecPreTrainedModel,
         )
         from .models.encoder_decoder import EncoderDecoderModel
         from .models.ernie import (
@@ -6332,9 +6368,11 @@ if TYPE_CHECKING:
             TFAlbertPreTrainedModel,
         )
         from .models.auto import (
+            TF_MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
             TF_MODEL_FOR_CAUSAL_LM_MAPPING,
             TF_MODEL_FOR_DOCUMENT_QUESTION_ANSWERING_MAPPING,
             TF_MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
+            TF_MODEL_FOR_MASK_GENERATION_MAPPING,
             TF_MODEL_FOR_MASKED_IMAGE_MODELING_MAPPING,
             TF_MODEL_FOR_MASKED_LM_MAPPING,
             TF_MODEL_FOR_MULTIPLE_CHOICE_MAPPING,
@@ -6346,6 +6384,7 @@ if TYPE_CHECKING:
             TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
             TF_MODEL_FOR_SPEECH_SEQ_2_SEQ_MAPPING,
             TF_MODEL_FOR_TABLE_QUESTION_ANSWERING_MAPPING,
+            TF_MODEL_FOR_TEXT_ENCODING_MAPPING,
             TF_MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING,
             TF_MODEL_FOR_VISION_2_SEQ_MAPPING,
             TF_MODEL_FOR_ZERO_SHOT_IMAGE_CLASSIFICATION_MAPPING,
@@ -6365,6 +6404,7 @@ if TYPE_CHECKING:
             TFAutoModelForSequenceClassification,
             TFAutoModelForSpeechSeq2Seq,
             TFAutoModelForTableQuestionAnswering,
+            TFAutoModelForTextEncoding,
             TFAutoModelForTokenClassification,
             TFAutoModelForVision2Seq,
             TFAutoModelForZeroShotImageClassification,
@@ -6877,6 +6917,7 @@ if TYPE_CHECKING:
             FlaxAlbertPreTrainedModel,
         )
         from .models.auto import (
+            FLAX_MODEL_FOR_AUDIO_CLASSIFICATION_MAPPING,
             FLAX_MODEL_FOR_CAUSAL_LM_MAPPING,
             FLAX_MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING,
             FLAX_MODEL_FOR_MASKED_LM_MAPPING,

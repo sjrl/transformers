@@ -98,7 +98,7 @@ if stale_egg_info.exists():
 # 2. once modified, run: `make deps_table_update` to update src/transformers/dependency_versions_table.py
 _deps = [
     "Pillow",
-    "accelerate>=0.20.2",
+    "accelerate>=0.20.3",
     "av==9.2.0",  # Latest version of PyAV (10.0.0) has issues with audio stream.
     "beautifulsoup4",
     "black~=23.1",
@@ -168,9 +168,9 @@ _deps = [
     "sudachipy>=0.6.6",
     "sudachidict_core>=20220729",
     # TensorFlow pin. When changing this value, update examples/tensorflow/_tests_requirements.txt accordingly
-    "tensorflow-cpu>=2.4,<2.13",
-    "tensorflow>=2.4,<2.13",
-    "tensorflow-text<2.13",
+    "tensorflow-cpu>=2.6,<2.14",
+    "tensorflow>=2.6,<2.14",
+    "tensorflow-text<2.14",
     "tf2onnx",
     "timeout-decorator",
     "timm",

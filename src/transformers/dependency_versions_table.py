@@ -3,7 +3,7 @@
 # 2. run `make deps_table_update``
 deps = {
     "Pillow": "Pillow",
-    "accelerate": "accelerate>=0.20.2",
+    "accelerate": "accelerate>=0.20.3",
     "av": "av==9.2.0",
     "beautifulsoup4": "beautifulsoup4",
     "black": "black~=23.1",
@@ -72,9 +72,9 @@ deps = {
     "starlette": "starlette",
     "sudachipy": "sudachipy>=0.6.6",
     "sudachidict_core": "sudachidict_core>=20220729",
-    "tensorflow-cpu": "tensorflow-cpu>=2.4,<2.13",
-    "tensorflow": "tensorflow>=2.4,<2.13",
-    "tensorflow-text": "tensorflow-text<2.13",
+    "tensorflow-cpu": "tensorflow-cpu>=2.6,<2.14",
+    "tensorflow": "tensorflow>=2.6,<2.14",
+    "tensorflow-text": "tensorflow-text<2.14",
     "tf2onnx": "tf2onnx",
     "timeout-decorator": "timeout-decorator",
     "timm": "timm",
