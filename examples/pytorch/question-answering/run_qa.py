@@ -50,7 +50,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from prep_data import get_blendqa
+from prep_data import get_blendqa, _prep_mrqa
 
 
 # Turns on TF32 precision. Can give up to 3x throughput improvement. Need Ampere architecture (should work with 3070)
@@ -331,6 +331,13 @@ def main(raw_args=None):
     if data_args.dataset_name is not None:
         if data_args.dataset_name == "BlendQA":
             raw_datasets = get_blendqa(
+                cache_dir=model_args.cache_dir,
+                use_auth_token=True if model_args.use_auth_token else None,
+                preprocessing_num_workers=data_args.preprocessing_num_workers,
+                overwrite_cache=data_args.overwrite_cache,
+            )
+        elif data_args.dataset_name == "BlendQA":
+            raw_datasets = _prep_mrqa(
                 cache_dir=model_args.cache_dir,
                 use_auth_token=True if model_args.use_auth_token else None,
                 preprocessing_num_workers=data_args.preprocessing_num_workers,

@@ -18,6 +18,7 @@ if __name__ == "__main__":
         "squadshifts": ["amazon", "new_wiki", "nyt", "reddit"],
         "adversarial_qa": ["adversarialQA"],
         "squad_adversarial": ["AddOneSent"],
+        "mrqa": [None],
     }
 
     for dataset, configs in datasets.items():
