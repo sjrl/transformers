@@ -1,5 +1,8 @@
 import os
 from argparse import ArgumentParser
+import gc
+import torch
+
 from run_qa import main
 
 
@@ -19,6 +22,8 @@ if __name__ == "__main__":
 
     for dataset, configs in datasets.items():
         for config in configs:
+            gc.collect()
+            torch.cuda.empty_cache()
             if config is not None:
                 output_dir = os.path.join(args.model_path, f"eval_{dataset}_{config}")
                 extra_args = ["--dataset_config_name", config]
