@@ -229,7 +229,10 @@ def _prep_mrqa(
     bef_train_rows = mrqa_datasets["train"].num_rows
     bef_valid_rows = mrqa_datasets["validation"].num_rows
     bef_test_rows = mrqa_datasets["test"].num_rows
-    mrqa_datasets = mrqa_datasets.filter(lambda example: len(example["answers"]["text"]) > 0)
+    mrqa_datasets = mrqa_datasets.filter(
+        lambda example: len(example["answers"]["text"]) > 0,
+        load_from_cache_file=not overwrite_cache,
+    )
     train_rows = mrqa_datasets["train"].num_rows
     valid_rows = mrqa_datasets["validation"].num_rows
     test_rows = mrqa_datasets["test"].num_rows
