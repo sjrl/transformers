@@ -336,7 +336,7 @@ def main(raw_args=None):
                 preprocessing_num_workers=data_args.preprocessing_num_workers,
                 overwrite_cache=data_args.overwrite_cache,
             )
-        elif data_args.dataset_name == "BlendQA":
+        elif data_args.dataset_name == "mrqa":
             raw_datasets = _prep_mrqa(
                 cache_dir=model_args.cache_dir,
                 use_auth_token=True if model_args.use_auth_token else None,
