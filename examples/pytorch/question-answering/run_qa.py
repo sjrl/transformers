@@ -444,6 +444,13 @@ def main(raw_args=None):
         load_in_8bit=model_args.load_in_8bit,
         # device_map={"": 0} if model_args.load_in_8bit else None,
     )
+
+    # Uses Flash Attention
+    try:
+        model = model.to_bettertransformer()
+    except ValueError:
+        print("Better Transformer not supported for this model type")
+
     if model_args.peft_model_id:
         from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
         # If provided load an existing PeftModel
