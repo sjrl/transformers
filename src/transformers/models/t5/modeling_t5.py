@@ -1362,12 +1362,8 @@ num_heads)`.
     T5_START_DOCSTRING,
 )
 class T5Model(T5PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [
-        r"encoder.embed_tokens.weight",
-        r"decoder.embed_tokens.weight",
-    ]
     _keys_to_ignore_on_load_unexpected = [
-        r"decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
+        "decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
     ]
     _tied_weights_keys = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
 
@@ -1566,13 +1562,8 @@ class T5Model(T5PreTrainedModel):
 
 @add_start_docstrings("""T5 Model with a `language modeling` head on top.""", T5_START_DOCSTRING)
 class T5ForConditionalGeneration(T5PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [
-        r"encoder.embed_tokens.weight",
-        r"decoder.embed_tokens.weight",
-        r"lm_head.weight",
-    ]
     _keys_to_ignore_on_load_unexpected = [
-        r"decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
+        "decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
     ]
     _tied_weights_keys = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight", "lm_head.weight"]
 
@@ -1881,7 +1872,6 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     T5_START_DOCSTRING,
 )
 class T5EncoderModel(T5PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"encoder.embed_tokens.weight"]
     _tied_weights_keys = ["encoder.embed_tokens.weight"]
 
     def __init__(self, config: T5Config):
@@ -2107,26 +2097,20 @@ class T5EncoderForQuestionAnswering(T5PreTrainedModel):
 
 @add_start_docstrings(
     """
-    T5 Model with a span classification head on top for extractive question-answering tasks like SQuAD (linear
-    layers on top of the hidden-states output to compute `span start logits` and `span end logits`).
+    T5 Model with a span classification head on top for extractive question-answering tasks like SQuAD (linear layers
+    on top of the hidden-states output to compute `span start logits` and `span end logits`).
     """,
-    T5_START_DOCSTRING
+    T5_START_DOCSTRING,
 )
 class T5ForQuestionAnswering(T5PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [
-        r"encoder.embed_tokens.weight",
-        r"decoder.embed_tokens.weight",
-    ]
-    _keys_to_ignore_on_load_unexpected = [
-        r"decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
-    ]
+    _keys_to_ignore_on_load_unexpected = ["decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight"]
+    _tied_weights_keys = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
 
     def __init__(self, config: T5Config):
         super().__init__(config)
         self.model_dim = config.d_model
 
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
-        #import pdb;pdb.set_trace()
 
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False
@@ -2145,10 +2129,6 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
-
-        # Model parallel
-        self.model_parallel = False
-        self.device_map = None
 
     def get_input_embeddings(self):
         return self.shared
@@ -2194,7 +2174,6 @@ class T5ForQuestionAnswering(T5PreTrainedModel):
             Labels for position (index) of the end of the labelled span for computing the token classification loss.
             Positions are clamped to the length of the sequence (*sequence_length*). Position outside of the sequence
             are not taken into account for computing the loss.
-
         Returns:
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict

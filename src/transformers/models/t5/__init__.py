@@ -115,13 +115,13 @@ if TYPE_CHECKING:
     else:
         from .modeling_t5 import (
             T5_PRETRAINED_MODEL_ARCHIVE_LIST,
+            T5EncoderForQuestionAnswering,
             T5EncoderModel,
             T5ForConditionalGeneration,
+            T5ForQuestionAnswering,
             T5Model,
             T5PreTrainedModel,
             load_tf_weights_in_t5,
-            T5ForQuestionAnswering,
-            T5EncoderForQuestionAnswering,
         )
 
     try:
