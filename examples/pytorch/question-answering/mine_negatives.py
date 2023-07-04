@@ -1,9 +1,11 @@
 import random
 import json
+
 from datasets import load_dataset
+from sentence_transformers import CrossEncoder
 
 
-def random_negatives(qrels: dict, num_negatives: int = 5):
+def find_random_negatives(qrels: dict, num_negatives: int = 5):
     """
     Add random negatives for each question in `qrels`. By default, 5 random negatives are added for each question.
     """
@@ -13,11 +15,16 @@ def random_negatives(qrels: dict, num_negatives: int = 5):
         possible_keys = list(qrels.keys())
         # Remove documents that corresponds to the positive of that question.
         possible_keys.remove(question)
+
         sampled_keys = random.sample(possible_keys, num_negatives)
         negative_list = []
+        negative_indices = []
         for key in sampled_keys:
-            negative_list.append(qrels[key][0])
+            negative_list.append(qrels[key]["pos"][0])
+            negative_indices.append(qrels[key]["pos_idx"][0])
+
         qrels_with_negatives[question]["neg"] = negative_list
+        qrels_with_negatives[question]["neg_idx"] = negative_indices
     return qrels_with_negatives
 
 
@@ -25,11 +32,35 @@ def score_qrels(qrels: dict):
     """
     Score the qrels using a cross-encoder.
     """
+    # qrels[question] = {"pos": [context], "pos_idx": [pos_idx], "neg": [neg_context], "neg_idx": [neg_idx]}
     qrels_with_scores = qrels.copy()
+
+    # Prepare all tuples
+    sentences = []
+    idx_to_question = {}
+    counter = 0
+    for question in qrels:
+        for pos in qrels[question]["pos"]:
+            sentences.append([question, pos])
+            idx_to_question[counter] = question
+            counter += 1
+        for neg in qrels[question]["neg"]:
+            sentences.append([question, neg])
+            idx_to_question[counter] = question
+            counter += 1
+
+    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2", max_length=512)
+    scores = model.predict(
+        sentences=sentences,
+        # sentences=[['Query', 'Paragraph1'], ['Query', 'Paragraph2'], ['Query', 'Paragraph3']],
+        batch_size=32,
+        num_workers=4,
+    )
+    # TODO Unpack the scores in their correct spots
     return qrels_with_scores
 
 
-def filter_qrels(qrels: dict):
+def filter_qrels(qrels: dict, margin: float = 3.):
     """
     Only keep negatives below a certain threshold with respect to the positive score.
     E.g. Threshold = 3, Pos score = 7, only keep as negatives of scores of 4 and below.
@@ -65,7 +96,7 @@ def mine_negatives_adversarial_qa():
             qrels[row["question"]] = {"pos": [row["context"]], "pos_idx": [idx], "neg": [], "neg_idx": []}
 
     # 3. Add random negatives to qrels
-    qrels = random_negatives(qrels=qrels)
+    qrels = find_random_negatives(qrels=qrels)
 
     # 4. Score the pairs
     qrels = score_qrels(qrels=qrels)
