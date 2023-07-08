@@ -497,6 +497,8 @@ def main(raw_args=None):
         if target_modules is None:
             raise ValueError("Could not determine the target_modules to use in LoRA")
 
+        print(f"Target modules: {target_modules}")
+
         # Define LoRA Config
         modules_to_save = ["qa_outputs"]
         target_embeddings_mapping = {
