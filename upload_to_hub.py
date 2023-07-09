@@ -15,6 +15,7 @@ if __name__ == "__main__":
         # Model
         "config.json",
         "modeling_t5qa.py",
+        "modeling_t5seq.py",
         "pytorch_model.bin",
         "model.safetensors",
         # Tokenizer
