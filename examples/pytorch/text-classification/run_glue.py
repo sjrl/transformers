@@ -22,6 +22,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
+import json
 
 import datasets
 import evaluate
@@ -41,6 +42,7 @@ from transformers import (
     TrainingArguments,
     default_data_collator,
     set_seed,
+    TrainerCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -200,6 +202,34 @@ class ModelArguments:
     ignore_mismatched_sizes: bool = field(
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
+    )
+    load_in_8bit: bool = field(
+        default=False,
+        metadata={"help": "Load model in 8 bit."},
+    )
+    peft_model_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of a pretrained PeftModel."},
+    )
+    use_lora: bool = field(
+        default=False,
+        metadata={"help": "Use LoRA training enabled by peft."},
+    )
+    lora_r: int = field(
+        default=None,
+        metadata={"help": "Set the r parameter for LoRA."},
+    )
+    lora_alpha: int = field(
+        default=None,
+        metadata={"help": "Set the alpha parameter for LoRA."},
+    )
+    lora_dropout: float = field(
+        default=None,
+        metadata={"help": "Set dropout parameter for LoRA."},
+    )
+    lora_train_embeddings: bool = field(
+        default=False,
+        metadata={"help": "Train the embeddings when using LoRA"},
     )
 
 
@@ -378,7 +408,84 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+        load_in_8bit=model_args.load_in_8bit,
     )
+
+    if model_args.use_lora or model_args.peft_model_id:
+        try:
+            import peft
+        except ImportError:
+            logger.warning("Peft is not installed so setting use_lora=False and peft_model_id=None")
+            model_args.use_lora = False
+            model_args.peft_model_id = None
+
+    if model_args.peft_model_id:
+        from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
+        # If provided load an existing PeftModel
+        # TODO Should probably use the config.base_model_name_or_path to load the base model
+        # config = LoraConfig.from_pretrained(model_args.peft_model_id)
+        # model = AutoModelForQuestionAnswering.from_pretrained(config.base_model_name_or_path)
+        model = PeftModelForQuestionAnswering.from_pretrained(
+            model=model, model_id=model_args.peft_model_id, is_trainable=False
+        )
+
+    if model_args.peft_model_id and model_args.use_lora:
+        logger.warning("The parameters peft_model_id and use_lora cannot both be set. Setting use_lora=False.")
+        model_args.use_lora = False
+
+    if model_args.use_lora:
+        # Create new PeftModel and PeftConfig
+        logger.info("Using PEFT for LoRA training.")
+        from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
+
+        # Updated targe modules following recommendation from AdaLora paper
+        target_modules_mapping = {
+            "deberta-v2": ["query_proj", "key_proj", "value_proj", "dense"],
+            "deberta-v3": ["query_proj", "key_proj", "value_proj", "dense"],
+            "bert": ["query", "value", "key", "dense"],
+            "t5": ["q", "k", "v", "o", "wi_0", "wi_1", "wo"],
+        }
+        target_modules = None
+        target_key = None
+        for key in target_modules_mapping:
+            if key in model_args.model_name_or_path:
+                target_key = key
+                target_modules = target_modules_mapping[key]
+                break
+        if target_modules is None:
+            raise ValueError("Could not determine the target_modules to use in LoRA")
+
+        print(f"Target modules: {target_modules}")
+
+        # Define LoRA Config
+        modules_to_save = ["qa_outputs"]
+        target_embeddings_mapping = {
+            "deberta-v2": ["word_embeddings"],
+            "deberta-v3": ["word_embeddings"],
+            "bert": ["embeddings"],
+            "t5": ["shared"],
+        }
+        if model_args.lora_train_embeddings:
+            modules_to_save += target_embeddings_mapping[target_key]
+        lora_config = LoraConfig(
+            r=model_args.lora_r if model_args.lora_r else 8,
+            lora_alpha=model_args.lora_alpha if model_args.lora_alpha else 32,
+            target_modules=target_modules,
+            lora_dropout=model_args.lora_dropout if model_args.lora_dropout else 0.1,
+            bias="none",
+            task_type=TaskType.SEQ_CLS,
+            modules_to_save=["classifier"],
+        )
+        # prepare int-8 model for training
+        if model_args.load_in_8bit:
+            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+        # model.is_gradient_checkpointing needs to be set to True before the peft model is loaded
+        elif training_args.gradient_checkpointing:
+            model.gradient_checkpointing_enable()
+
+        # add LoRA adaptor
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
 
     # Preprocessing the raw_datasets
     if data_args.task_name is not None:
@@ -509,6 +616,26 @@ def main():
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
     else:
         data_collator = None
+
+    class SaveLogCallback(TrainerCallback):
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if state.is_local_process_zero:
+                output = {**logs, **{"step": state.global_step}}
+                path = os.path.join(args.output_dir, f"logs.jsonl")
+                with open(path, "a") as f:
+                    f.write(json.dumps(output, sort_keys=True) + '\n')
+    callbacks = [SaveLogCallback]
+
+    # Needed b/c PeftModel.save_pretrained is not called by the trainer since PeftModel does not inherit from
+    # PreTrainedModel
+    class SavePeftModel(TrainerCallback):
+        def on_save(self, args, state, control, **kwargs):
+            if state.is_local_process_zero:
+                output_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                model.save_pretrained(output_dir)
+
+    if model_args.use_lora:
+        callbacks.extend([SavePeftModel])
 
     # Initialize our Trainer
     trainer = Trainer(
