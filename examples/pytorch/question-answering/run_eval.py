@@ -18,7 +18,7 @@ if __name__ == "__main__":
         "squadshifts": ["amazon", "new_wiki", "nyt", "reddit"],
         "adversarial_qa": ["adversarialQA"],
         "squad_adversarial": ["AddOneSent"],
-        "mrqa": [None],
+        #"mrqa": [None],
     }
 
     for dataset, configs in datasets.items():
@@ -46,5 +46,6 @@ if __name__ == "__main__":
                 "--preprocessing_num_workers", "6",
                 "--eval_accumulation_steps", "2",
                 "--overwrite_output_dir", "False",
+                #"--overwrite_cache", "True",
             ] + extra_args
             main(raw_args=raw_args)

@@ -2008,7 +2008,6 @@ class T5EncoderForQuestionAnswering(T5PreTrainedModel):
 
         # Model parallel
         self.model_parallel = False
-        self.device_map = None
 
     def get_input_embeddings(self):
         return self.shared

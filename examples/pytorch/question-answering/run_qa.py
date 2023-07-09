@@ -46,6 +46,7 @@ from transformers import (
     default_data_collator,
     set_seed,
     TrainerCallback,
+    T5EncoderForQuestionAnswering,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
@@ -440,7 +441,8 @@ def main(raw_args=None):
     }
     if model_args.load_in_8bit:
         logger.info("Loading in 8bit")
-    model = AutoModelForQuestionAnswering.from_pretrained(
+    #model = AutoModelForQuestionAnswering.from_pretrained(
+    model = T5EncoderForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         config=config,
@@ -452,11 +454,12 @@ def main(raw_args=None):
         # device_map={"": 0} if model_args.load_in_8bit else None,
     )
 
-    # Uses Flash Attention
-    try:
-        model = model.to_bettertransformer()
-    except ValueError:
-        print("Better Transformer not supported for this model type")
+    # NOTE: Not compatible with training
+    # # Uses Flash Attention
+    # try:
+    #     model = model.to_bettertransformer()
+    # except ValueError:
+    #     print("Better Transformer not supported for this model type")
 
     if model_args.peft_model_id:
         from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
@@ -493,6 +496,8 @@ def main(raw_args=None):
                 break
         if target_modules is None:
             raise ValueError("Could not determine the target_modules to use in LoRA")
+
+        print(f"Target modules: {target_modules}")
 
         # Define LoRA Config
         modules_to_save = ["qa_outputs"]
