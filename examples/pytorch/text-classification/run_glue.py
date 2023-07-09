@@ -458,7 +458,7 @@ def main():
         print(f"Target modules: {target_modules}")
 
         # Define LoRA Config
-        modules_to_save = ["qa_outputs"]
+        modules_to_save = ["classifier", "score", "classification_head"]
         target_embeddings_mapping = {
             "deberta-v2": ["word_embeddings"],
             "deberta-v3": ["word_embeddings"],
@@ -474,7 +474,7 @@ def main():
             lora_dropout=model_args.lora_dropout if model_args.lora_dropout else 0.1,
             bias="none",
             task_type=TaskType.SEQ_CLS,
-            modules_to_save=["classifier"],
+            modules_to_save=modules_to_save,
         )
         # prepare int-8 model for training
         if model_args.load_in_8bit:
