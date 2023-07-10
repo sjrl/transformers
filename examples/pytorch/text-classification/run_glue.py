@@ -646,6 +646,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        callbacks=callbacks,
     )
 
     # Training
