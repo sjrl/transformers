@@ -633,6 +633,7 @@ def main():
             if state.is_local_process_zero:
                 output_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
                 model.save_pretrained(output_dir)
+                model.config.save_pretrained(output_dir)
 
     if model_args.use_lora:
         callbacks.extend([SavePeftModel])
