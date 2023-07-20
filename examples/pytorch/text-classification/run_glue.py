@@ -381,36 +381,6 @@ def main():
             label_list.sort()  # Let's sort it for determinism
             num_labels = len(label_list)
 
-    # Load pretrained model and tokenizer
-    #
-    # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
-    # download model & vocab.
-    config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task=data_args.task_name,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-        ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
-        load_in_8bit=model_args.load_in_8bit,
-    )
-
     if model_args.use_lora or model_args.peft_model_id:
         try:
             import peft
@@ -419,13 +389,47 @@ def main():
             model_args.use_lora = False
             model_args.peft_model_id = None
 
-    if model_args.peft_model_id:
-        from peft import get_peft_model, LoraConfig, PeftModelForQuestionAnswering
+    if not model_args.peft_model_id:
+        # Load pretrained model and tokenizer
+        #
+        # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
+        # download model & vocab.
+        config = AutoConfig.from_pretrained(
+            model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task=data_args.task_name,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+            ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+            load_in_8bit=model_args.load_in_8bit,
+        )
+    else:
+        from peft import get_peft_model, LoraConfig, PeftModelForSequenceClassification
         # If provided load an existing PeftModel
-        # TODO Should probably use the config.base_model_name_or_path to load the base model
-        # config = LoraConfig.from_pretrained(model_args.peft_model_id)
-        # model = AutoModelForQuestionAnswering.from_pretrained(config.base_model_name_or_path)
-        model = PeftModelForQuestionAnswering.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(model_args.peft_model_id)
+        lora_config = LoraConfig.from_pretrained(model_args.peft_model_id)
+        config = AutoConfig.from_pretrained(model_args.peft_model_id)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            lora_config.base_model_name_or_path,
+            config=config,
+        )
+        model = PeftModelForSequenceClassification.from_pretrained(
             model=model, model_id=model_args.peft_model_id, is_trainable=False
         )
 
