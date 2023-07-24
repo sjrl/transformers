@@ -28,6 +28,7 @@ import datasets
 import evaluate
 import numpy as np
 from datasets import load_dataset
+import torch
 
 import transformers
 from transformers import (
@@ -432,6 +433,17 @@ def main():
         model = PeftModelForSequenceClassification.from_pretrained(
             model=model, model_id=model_args.peft_model_id, is_trainable=False
         )
+        # Need to load lm_head separately due to this bug https://github.com/huggingface/peft/issues/602
+        # modules_to_save = ["classifier", "score", "classification_head"]
+        if hasattr(model, "score"):
+            score_params = torch.load('score-params.pt')
+            model.score.load_state_dict(score_params)
+        elif hasattr(model, "classifier"):
+            classifier_params = torch.load('classifier-params.pt')
+            model.classifier.load_state_dict(classifier_params)
+        elif hasattr(model, "classification_head"):
+            classification_head_params = torch.load('classification_head-params.pt')
+            model.classification_head.load_state_dict(classification_head_params)
 
     if model_args.peft_model_id and model_args.use_lora:
         logger.warning("The parameters peft_model_id and use_lora cannot both be set. Setting use_lora=False.")
@@ -440,7 +452,7 @@ def main():
     if model_args.use_lora:
         # Create new PeftModel and PeftConfig
         logger.info("Using PEFT for LoRA training.")
-        from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 
         # Updated targe modules following recommendation from AdaLora paper
         target_modules_mapping = {
@@ -482,7 +494,7 @@ def main():
         )
         # prepare int-8 model for training
         if model_args.load_in_8bit:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # model.is_gradient_checkpointing needs to be set to True before the peft model is loaded
         elif training_args.gradient_checkpointing:
             model.gradient_checkpointing_enable()
@@ -636,8 +648,15 @@ def main():
         def on_save(self, args, state, control, **kwargs):
             if state.is_local_process_zero:
                 output_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
-                model.save_pretrained(output_dir)
                 model.config.save_pretrained(output_dir)
+                model.save_pretrained(output_dir)
+                # Need to save lm_head separately due to this bug https://github.com/huggingface/peft/issues/602
+                if hasattr(model, "score"):
+                    torch.save(model.score.state_dict(), 'score-params.pt')
+                elif hasattr(model, "classifier"):
+                    torch.save(model.classifier.state_dict(), 'classifier-params.pt')
+                elif hasattr(model, "classification_head"):
+                    torch.save(model.classification_head.state_dict(), 'classification_head-params.pt')
 
     if model_args.use_lora:
         callbacks.extend([SavePeftModel])
@@ -669,6 +688,13 @@ def main():
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
+        # Need to save lm_head separately due to this bug https://github.com/huggingface/peft/issues/602
+        if hasattr(trainer.model, "score"):
+            torch.save(trainer.model.score.state_dict(), 'score-params.pt')
+        elif hasattr(trainer.model, "classifier"):
+            torch.save(trainer.model.classifier.state_dict(), 'classifier-params.pt')
+        elif hasattr(trainer.model, "classification_head"):
+            torch.save(trainer.model.classification_head.state_dict(), 'classification_head-params.pt')
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
