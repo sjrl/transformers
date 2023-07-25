@@ -208,6 +208,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Load model in 8 bit."},
     )
+    load_in_4bit: bool = field(
+        default=False,
+        metadata={"help": "Load model in 4 bit."},
+    )
     peft_model_id: Optional[str] = field(
         default=None,
         metadata={"help": "The name of a pretrained PeftModel."},
@@ -390,6 +394,10 @@ def main():
             model_args.use_lora = False
             model_args.peft_model_id = None
 
+    if model_args.load_in_8bit and model_args.load_in_4bit:
+        logger.warning("The parameters load_in_8bit and load_in_4bit cannot both be set. Setting load_in_8bit=False.")
+        model_args.load_in_8bit = False
+
     if not model_args.peft_model_id:
         # Load pretrained model and tokenizer
         #
@@ -418,7 +426,10 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
             ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+            device_map="auto" if model_args.load_in_8bit or model_args.load_in_4bit else None,
+            torch_dtype=torch.bfloat16 if model_args.load_in_8bit or model_args.load_in_4bit else None,
             load_in_8bit=model_args.load_in_8bit,
+            load_in_4bit=model_args.load_in_4bit,
         )
     else:
         from peft import get_peft_model, LoraConfig, PeftModelForSequenceClassification
@@ -493,7 +504,7 @@ def main():
             modules_to_save=modules_to_save,
         )
         # prepare int-8 model for training
-        if model_args.load_in_8bit:
+        if model_args.load_in_8bit or model_args.load_in_4bit:
             model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
         # model.is_gradient_checkpointing needs to be set to True before the peft model is loaded
         elif training_args.gradient_checkpointing:
