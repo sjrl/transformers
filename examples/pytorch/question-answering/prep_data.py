@@ -95,6 +95,21 @@ def update_answers_column(
     answer_start: List[int],
     answer_end: List[int],
 ) -> Tuple:
+    """
+    Check if all answer texts provided in `text` are found in the `context`.
+
+    If any of the answers are not found by exact match then we try to find them based on some common errors:
+    - Formatting differences (e.g. SQuAD normalization)
+    - Incorrect `answer_start`
+
+    After correcting for these errors we return the updated answer text which exactly matches the string span in the
+    `context` and the updated answer start in terms of character position.
+
+    :param context: The context where the answer texts should be found.
+    :param text: List of answer texts.
+    :param answer_start: List of character positions where the answer should start in the context.
+    :param answer_end: List of character positions where the answer should end in the context.
+    """
     # Skip if all answers already found
     if all([t == context[start:start + len(t)] for start, t in zip(answer_start, text)]):
         return text, answer_start
@@ -126,7 +141,13 @@ def check_answer_in_context(
     subset: str,
 ) -> Tuple:
     """
-    Checks if the answer (text) is exactly matches the one found in the context.
+    Checks if the answer (text) exactly matches the one found in the context and only returns it if it is found.
+
+    :param context: The context where the answer texts should be found.
+    :param text: List of answer texts.
+    :param answer_start: List of character positions where the answer should start in the context.
+    :param idx: Index number of this datapoint in the dataset.
+    :param subset: The subset that this datapoint belongs to in MRQA.
     """
     found_text = []
     found_answer_start = []
@@ -148,7 +169,7 @@ def check_answer_in_context(
     return found_text, found_answer_start
 
 
-def _add_subset_column(dataset_dict: DatasetDict, subset_name: str):
+def _add_subset_column(dataset_dict: DatasetDict, subset_name: str) -> DatasetDict:
     """
     Add the "subset" column to each split in `dataset_dict` with value `subset_name`.
     """
@@ -167,6 +188,20 @@ def _prep_mrqa(
     preprocessing_num_workers: int = 1,
     overwrite_cache: bool = False,
 ):
+    """
+    Loads and cleans the MRQA dataset from HuggingFace. The MRQA dataset combines multiple datasets, but still contains
+    some inconsistencies and errors.
+
+    Some changes we make are:
+    - Remove the SQuAD dataset (in favor of loading SQuAD V2 separately)
+    - Remove unnecessary columns (context_tokens, question_tokens, answers)
+    - Rename columns: qid -> id;
+    - Remove special tokens [DOC], [TLE], and [PAR] which are inconsistently applied throughout the dataset
+    - Check that answer text can be **exactly** found in the context (100% necessary for extractive QA models to work).
+      If the answer text is not found we perform some "tricks" to find it. Some common errors are that the answer text
+      and context are formatted differently (e.g. capitalization and spacing), the provided character spans are
+      incorrect,
+    """
     mrqa_datasets = load_dataset(
         "mrqa",
         None,
@@ -182,6 +217,7 @@ def _prep_mrqa(
 
     # Remove special tokens [DOC], [TLE] and [PAR]. They are inconsistently applied
     def remove_special_tokens_from_context(example):
+        """Remove the special tokens [DOC], [TLE], and [PAR] from the context and replace with 5 white spaces."""
         context = example["context"]
         context = context.replace("[DOC]", " " * 5)
         context = context.replace("[TLE]", " " * 5)
@@ -206,6 +242,7 @@ def _prep_mrqa(
             answer_start=answer_start,
             answer_end=answer_end,
         )
+        # Check that answer is in the context
         text, answer_start = check_answer_in_context(
             context=example["context"],
             text=text,
@@ -431,7 +468,6 @@ def _prep_synqa(
             subset=example["subset"]
         )
         return example
-
     # Map detected_answers to answers in the correct format
     synqa_datasets = synqa_datasets.map(
         check_answers,
@@ -457,7 +493,7 @@ def get_blendqa(
     Blend multiple QA datasets from HuggingFace
     MRQA:
 
-    Squad V2 (only no answer questions):
+    Squad V2:
 
     SynQA:
 
@@ -466,8 +502,8 @@ def get_blendqa(
     ROPES:
 
     :param cache_dir: Directory to read/write data. Defaults to `"~/.cache/huggingface/datasets"`.
-    :param use_auth_token:
-    :param preprocessing_num_workers:
+    :param use_auth_token: Whether to use the HF auth token needed for downloading private datasets.
+    :param preprocessing_num_workers: Number of workers to use when preprocessing the datasets.
     :param overwrite_cache: Whether to overwrite the cached training and evaluation sets.
     """
     # MRQA Dataset
