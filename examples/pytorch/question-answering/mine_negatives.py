@@ -57,26 +57,32 @@ def score_qrels(qrels: dict) -> Dict:
 
     # Prepare all tuples
     sentences = []
-    idx_to_question = {}
-    counter = 0
     for question in qrels:
         for pos in qrels[question]["pos"]:
-            sentences.append([question, pos])
-            idx_to_question[counter] = question
-            counter += 1
-        for neg in qrels[question]["neg"]:
-            sentences.append([question, neg])
-            idx_to_question[counter] = question
-            counter += 1
+            sentences.append([question, pos["context"]])
+        for system in qrels[question]["neg"]:
+            for neg in qrels[question]["neg"][system]:
+                sentences.append([question, neg["context"]])
 
     model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2", max_length=512)
+    # Scores should come out flattened
     scores = model.predict(
         sentences=sentences,
         # sentences=[['Query', 'Paragraph1'], ['Query', 'Paragraph2'], ['Query', 'Paragraph3']],
         batch_size=32,
         num_workers=4,
     )
-    # TODO Unpack the scores in their correct spots
+
+    # Unpack the scores in their correct spots
+    counter = 0
+    for idx, question in enumerate(qrels):
+        for i in range(len(qrels[question]["pos"])):
+            qrels[question]["pos"][i].update({"ce-score": scores[counter]})
+            counter += 1
+        for system in qrels[question]["neg"]:
+            for j in range(len(qrels[question]["neg"][system])):
+                qrels[question]["neg"][system][j].update({"ce-score": scores[counter]})
+                counter += 1
 
     # qrels[question] = {
     #   "pos": [{"question_id": question_id, "context_id": context_id, "context": context, "ce-score": score}, ...],
@@ -185,7 +191,7 @@ def mine_negatives_adversarial_qa():
 
     # 5. Save qrels in MS-Marco format (e.g. like hard negatives for MS-Marco)
     #    Will be an easier way to keep track of all cross-encoder scores for positive and negative examples.
-    # with open("adversarial_qa_qrels.json") as f1:
+    # with open("adversarial_qa_qrels.jsonl") as f1:
 
     # 6. Get hard negatives based on ce_score_margin
     #    This also combines and flattens all systems together
