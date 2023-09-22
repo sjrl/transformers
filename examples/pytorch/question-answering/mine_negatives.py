@@ -150,6 +150,18 @@ def get_hard_negatives(qrels: Dict, ce_score_margin: float = 3.):
     return filtered_qrels
 
 
+def save_qrels_to_jsonl(output_file_path: str, qrels: Dict) -> None:
+    """
+    Save qrels in JSONL format with their cross-encoder scores in MS-Marco like format.
+    
+    :param output_file_path: Output file path to save the qrels.
+    :param qrels: The query relations.
+    """
+    with open(output_file_path) as f1:
+        for question, data in qrels.items():
+            f1.write(json.dumps({"question": question, **data}))
+
+
 # MRQA -> subset, context, context_tokens, qid, question, question_tokens, detected_answers, answers
 # SynQA -> id, title, context, question, answers
 
@@ -191,7 +203,7 @@ def mine_negatives_adversarial_qa():
 
     # 5. Save qrels in MS-Marco format (e.g. like hard negatives for MS-Marco)
     #    Will be an easier way to keep track of all cross-encoder scores for positive and negative examples.
-    # with open("adversarial_qa_qrels.jsonl") as f1:
+    save_qrels_to_jsonl("adversarial_qa_qrels.jsonl", qrels=qrels)
 
     # 6. Get hard negatives based on ce_score_margin
     #    This also combines and flattens all systems together
