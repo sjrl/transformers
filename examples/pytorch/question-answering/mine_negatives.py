@@ -1,38 +1,58 @@
 import random
 import json
 
+from tqdm import tqdm
 from datasets import load_dataset
 from sentence_transformers import CrossEncoder
+
+from typing import Dict
 
 
 def find_random_negatives(qrels: dict, num_negatives: int = 5):
     """
-    Add random negatives for each question in `qrels`. By default, 5 random negatives are added for each question.
+    Add random negative contexts for each question in `qrels`. By default, 5 random negative contexts are added for
+    each question.
     """
     qrels_with_negatives = qrels.copy()
-    selected_questions = list(qrels.keys())
-    for question in selected_questions:
+    # Mine 5 negative contexts per question in the dataset
+    for question in qrels:
+        # Remove contexts that corresponds to the positive of that question.
         possible_keys = list(qrels.keys())
-        # Remove documents that corresponds to the positive of that question.
         possible_keys.remove(question)
 
         sampled_keys = random.sample(possible_keys, num_negatives)
-        negative_list = []
-        negative_indices = []
+        negatives = []
         for key in sampled_keys:
-            negative_list.append(qrels[key]["pos"][0])
-            negative_indices.append(qrels[key]["pos_idx"][0])
+            negatives.append(
+                {
+                    "question_id": qrels[question]["pos"][0]["question_id"],
+                    "context_id": qrels[key]["pos"][0]["context_id"],
+                    "context": qrels[key]["pos"][0]["context"]
+                }
+            )
+        qrels_with_negatives[question]["neg"] = {"random": negatives}
 
-        qrels_with_negatives[question]["neg"] = negative_list
-        qrels_with_negatives[question]["neg_idx"] = negative_indices
+    # qrels[question] = {
+    #   "pos": [{"question_id": question_id, "context_id": context_id, "context": context}, ...],
+    #   "neg": {
+    #       "random": [{"question_id": question_id, "context_id": context_id, "context": context}, ...],
+    #       ...
+    #   },
+    # }
     return qrels_with_negatives
 
 
-def score_qrels(qrels: dict):
+def score_qrels(qrels: dict) -> Dict:
     """
     Score the qrels using a cross-encoder.
     """
-    # qrels[question] = {"pos": [context], "pos_idx": [pos_idx], "neg": [neg_context], "neg_idx": [neg_idx]}
+    # qrels[question] = {
+    #   "pos": [{"question_id": question_id, "context_id": context_id, "context": context}, ...],
+    #   "neg": {
+    #       "random": [{"question_id": question_id, "context_id": context_id, "context": context}, ...],
+    #       ...
+    #   },
+    # }
     qrels_with_scores = qrels.copy()
 
     # Prepare all tuples
@@ -57,43 +77,105 @@ def score_qrels(qrels: dict):
         num_workers=4,
     )
     # TODO Unpack the scores in their correct spots
+
+    # qrels[question] = {
+    #   "pos": [{"question_id": question_id, "context_id": context_id, "context": context, "ce-score": score}, ...],
+    #   "neg": {
+    #       "random": [{"question_id": question_id, "context_id": context_id, "context": context, "ce-score": score}, ...],
+    #       ...
+    #   },
+    # }
     return qrels_with_scores
 
 
-def filter_qrels(qrels: dict, margin: float = 3.):
+def get_hard_negatives(qrels: Dict, ce_score_margin: float = 3.):
     """
     Only keep negatives below a certain threshold with respect to the positive score.
     E.g. Threshold = 3, Pos score = 7, only keep as negatives of scores of 4 and below.
-    """
-    return qrels
 
+    Each positive and negative passage comes with a score from a Cross-Encoder (msmarco-MiniLM-L-6-v3). This allows denoising, i.e. removing false negative
+    passages that are actually relevant for the query.
+    """
+    # qrels[question] = {
+    #   "pos": [{"question_id": question_id, "context_id": context_id, "context": context, "ce-score": score}, ...],
+    #   "neg": {
+    #       "random": [{"question_id": question_id, "context_id": context_id, "context": context, "ce-score": score}, ...],
+    #       ...
+    #   },
+    # }
+    filtered_qrels = []
+    for question, relations in tqdm(qrels.items()):
+        # Get the positive passage ids
+        pos_pids = [item['pid'] for item in relations['pos']]
+        pos_scores = dict(zip(pos_pids, [item['ce-score'] for item in relations['pos']]))
+
+        # Scoring
+        pos_min_ce_score = min([item['ce-score'] for item in relations['pos']])
+        ce_score_threshold = pos_min_ce_score - ce_score_margin
+
+        # Get all the hard negatives
+        neg_pids = set()
+        neg_scores = {}
+        for system_negs in relations['neg'].values():
+            for item in system_negs:
+
+                # Remove false negatives based on ce_score_threshold
+                if item['ce-score'] > ce_score_threshold:
+                    continue
+
+                pid = item['pid']
+                score = item['ce-score']
+                if pid not in neg_pids:
+                    neg_pids.add(pid)
+                    neg_scores[pid] = score
+
+        if len(pos_pids) > 0 and len(neg_pids) > 0:
+            filtered_qrels.append(
+                {
+                    'query_id': relations['qid'],
+                    'pos': pos_pids,
+                    'pos_scores': pos_scores,
+                    'neg': list(neg_pids),
+                    'neg_scores': neg_scores
+                }
+            )
+
+    print(f"Train queries: {len(filtered_qrels)}")
+    return filtered_qrels
+
+
+# MRQA -> subset, context, context_tokens, qid, question, question_tokens, detected_answers, answers
+# SynQA -> id, title, context, question, answers
 
 def mine_negatives_adversarial_qa():
     # Notes and Qs:
     # - Only mine negatives from within the same dataset. Can then upload these as no answer questions as datasets for
     #   that specific dataset.
     # - Any point in mining negatives between datasets?
+    # - Let's make it easy on ourselves and just save in the final format of the dataset as found on HuggingFace
 
-    # Let's make it easy on ourselves and just save in the final format of HF.
-    # SynQA -> id, title, context, question, answers
-    # Adversarial QA -> id, title, context, question, answers, metadata (only preserve split in metadata)
-    # MRQA -> subset, context, context_tokens, qid, question, question_tokens, detected_answers, answers
     # 1. Load dataset for mining negatives
+    split = "validation"
     adversarial_qa_datasets = load_dataset(
         "adversarial_qa",
         "adversarialQA",
         # cache_dir=cache_dir,
     )
-    data = adversarial_qa_datasets["validation"]
+    data = adversarial_qa_datasets[split]
 
     # 2. Construct qrels with positives
+    # Adversarial QA only has one answer per row
     qrels = {}
-    for idx, row in enumerate(data):
+    for row in data:
         if row["question"] in qrels:
-            qrels[row["question"]]["pos"].append(row["context"])
-            qrels[row["question"]]["pos_idx"].append(idx)
+            qrels[row["question"]]["pos"].append(
+                {"question_id": row["id"], "context_id": row["id"], "context": row["context"]}
+            )
         else:
-            qrels[row["question"]] = {"pos": [row["context"]], "pos_idx": [idx], "neg": [], "neg_idx": []}
+            qrels[row["question"]] = {
+                "pos": [{"question_id": row["id"], "context_id": row["id"], "context": row["context"]}],
+                "neg": [],
+            }
 
     # 3. Add random negatives to qrels
     qrels = find_random_negatives(qrels=qrels)
@@ -101,27 +183,30 @@ def mine_negatives_adversarial_qa():
     # 4. Score the pairs
     qrels = score_qrels(qrels=qrels)
 
-    # 5. Filter negatives
-    qrels = filter_qrels(qrels=qrels)
-
-    # 6. Save qrels in MS-Marco format (e.g. like hard negatives for MS-Marco)
+    # 5. Save qrels in MS-Marco format (e.g. like hard negatives for MS-Marco)
     #    Will be an easier way to keep track of all cross-encoder scores for positive and negative examples.
     # with open("adversarial_qa_qrels.json") as f1:
 
+    # 6. Get hard negatives based on ce_score_margin
+    #    This also combines and flattens all systems together
+    qrels = get_hard_negatives(qrels=qrels, ce_score_margin=3.)
+
     # 7. Save negatives jsonl format using HF column headers to be easily loadable for training
     #    Use id field to recreate all headers
-    # Adversarial QA -> id, title, context, question, answers, metadata (only preserve split in metadata)
+    # Adversarial QA -> id, title, context, question, answers, metadata
+    # - title and context should be kept together
     counter = 0
     result = []
     for qrel in qrels:
-        for negative_idx, negative in zip(qrel["neg_idx"], qrel["neg"]):
-            title = data[negative_idx]["title"]
+        for negative in qrel["neg"]:
+            title = data[negative["context_id"]]["title"]  # title and context are linked together
             row = {
-                "id": counter,  # TODO Create unique hash
+                "id": counter,  # TODO Create new hash based on question_id and context_id
                 "title": title,
-                "context": negative,
+                "context": negative["context"],
+                "question": negative["question"],
                 "answers": {"text": [], "answer_start": []},
-                "metadata": {"split": ""}  # TODO Only retain {"split": "validation"} or {"split": "train"}
+                "metadata": {"split": split}  # only preserve split in metadata
             }
             result.append(row)
             counter += 1
