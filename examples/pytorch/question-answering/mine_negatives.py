@@ -25,6 +25,7 @@ def find_random_negatives(qrels: dict, num_negatives: int = 5):
         for key in sampled_keys:
             negatives.append(
                 {
+                    "id": 0,   # TODO Create new hash based on question_id and context_id
                     "question_id": qrels[question]["pos"][0]["question_id"],
                     "context_id": qrels[key]["pos"][0]["context_id"],
                     "context": qrels[key]["pos"][0]["context"]
@@ -219,7 +220,7 @@ def mine_negatives_adversarial_qa():
         for negative in qrel["neg"]:
             title = data[negative["context_id"]]["title"]  # title and context are linked together
             row = {
-                "id": counter,  # TODO Create new hash based on question_id and context_id
+                "id": negative["id"],
                 "title": title,
                 "context": negative["context"],
                 "question": negative["question"],
