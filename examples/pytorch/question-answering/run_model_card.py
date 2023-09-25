@@ -33,13 +33,41 @@ def get_dataset_metrics(
     return metrics_readme
 
 
-def create_model_card(model_path: str, output_path: Optional[str] = None) -> None:
-    with open(os.path.join(model_path, "config.json")) as f1:
-        config = json.load(f1)
+def get_training_procedure(training_args_file: str) -> str:
+    if not os.path.isfile(training_args_file):
+        return "TRAINING_PROCEDURE"
 
-    base_model = config["_name_or_path"]
-    model_name = f"deepset/{base_model.split('/')[-1]}"
-    training_args = torch.load("training_args.bin")
+    training_args = torch.load(training_args_file)
+    template = f"""## Training procedure
+
+### Training hyperparameters
+
+The following hyperparameters were used during training:
+- learning_rate: {training_args.learning_rate:.0E}
+- train_batch_size: {training_args.train_batch_size}
+- eval_batch_size: {training_args.eval_batch_size}
+- seed: {training_args.seed}
+- gradient_accumulation_steps: {training_args.gradient_accumulation_steps}
+- total_train_batch_size: {training_args.train_batch_size * training_args.gradient_accumulation_steps}
+- optimizer: Adam with betas=({training_args.adam_beta1:.1f},{training_args.adam_beta2:.3f}) and epsilon={training_args.adam_epsilon:.0E}
+- lr_scheduler_type: {training_args.lr_scheduler_type}
+- lr_scheduler_warmup_ratio: {training_args.lr_scheduler_warmup_ratio:.1f}
+- num_epochs: {training_args.num_train_epochs:.1f}"""
+    return template
+
+
+def create_model_card(model_path: str, output_path: Optional[str] = None) -> None:
+    config_file = os.path.join(model_path, "config.json")
+    if os.path.isfile(config_file):
+        with open(os.path.join(model_path, "config.json")) as f1:
+            config = json.load(f1)
+        base_model = config["_name_or_path"]
+        model_name = f"deepset/{base_model.split('/')[-1]}"
+    else:
+        base_model = "BASE_MODEL"
+        model_name = "MODEL_NAME"
+
+    training_procedure = get_training_procedure(training_args_file=os.path.join(model_path, "training_args.bin"))
 
     squad_v2 = get_dataset_metrics(
         metrics_path=os.path.join(model_path, "eval_squad_v2", "all_results.json"),
@@ -211,21 +239,7 @@ answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
 }
 ```
 
-## Training procedure
-
-### Training hyperparameters
-
-The following hyperparameters were used during training:
-- learning_rate: {training_args.learning_rate:.0E}
-- train_batch_size: {training_args.train_batch_size}
-- eval_batch_size: {training_args.eval_batch_size}
-- seed: {training_args.seed}
-- gradient_accumulation_steps: {training_args.gradient_accumulation_steps}
-- total_train_batch_size: {training_args.train_batch_size * training_args.gradient_accumulation_steps}
-- optimizer: Adam with betas=({training_args.adam_beta1:.1f},{training_args.adam_beta2:.3f}) and epsilon={training_args.adam_epsilon:.0E}
-- lr_scheduler_type: {training_args.lr_scheduler_type}
-- lr_scheduler_warmup_ratio: {training_args.lr_scheduler_warmup_ratio:.1f}
-- num_epochs: {training_args.num_train_epochs:.1f}
+{training_procedure}
 
 ### Framework versions
 
