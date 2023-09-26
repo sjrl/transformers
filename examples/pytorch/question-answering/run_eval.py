@@ -27,6 +27,10 @@ if __name__ == "__main__":
         base_output_path = args.model_path
 
     for dataset, configs in datasets.items():
+        if dataset == "squad_v2":
+            version_2_with_negative = True
+        else:
+            version_2_with_negative = False
         for config in configs:
             gc.collect()
             torch.cuda.empty_cache()
@@ -40,7 +44,7 @@ if __name__ == "__main__":
                 "--model_name_or_path", args.model_path,
                 "--dataset_name", dataset,
                 "--output_dir", output_dir,
-                "--version_2_with_negative", "True",
+                "--version_2_with_negative", str(version_2_with_negative),
                 "--max_seq_length", "512",
                 "--doc_stride", "128",
                 "--do_eval",
