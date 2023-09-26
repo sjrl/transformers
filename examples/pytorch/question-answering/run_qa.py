@@ -441,8 +441,8 @@ def main(raw_args=None):
     }
     if model_args.load_in_8bit:
         logger.info("Loading in 8bit")
-    #model = AutoModelForQuestionAnswering.from_pretrained(
-    model = T5EncoderForQuestionAnswering.from_pretrained(
+    #model = T5EncoderForQuestionAnswering.from_pretrained(
+    model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         config=config,
