@@ -72,7 +72,7 @@ class T5ModelTester:
         use_attention_mask=True,
         use_labels=True,
         hidden_size=32,
-        num_hidden_layers=5,
+        num_hidden_layers=2,
         num_attention_heads=4,
         d_ff=37,
         relative_attention_num_buckets=8,
@@ -561,11 +561,11 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, 
         {
             "conversational": T5ForConditionalGeneration,
             "feature-extraction": T5Model,
+            "question-answering": T5ForQuestionAnswering,
             "summarization": T5ForConditionalGeneration,
+            "text-classification": T5ForSequenceClassification,
             "text2text-generation": T5ForConditionalGeneration,
             "translation": T5ForConditionalGeneration,
-            "question-answering": T5ForQuestionAnswering,
-            "text-classification": T5ForSequenceClassification,
             "zero-shot": T5ForSequenceClassification,
         }
         if is_torch_available()
@@ -583,6 +583,16 @@ class T5ModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, 
     def setUp(self):
         self.model_tester = T5ModelTester(self)
         self.config_tester = ConfigTester(self, config_class=T5Config, d_model=37)
+
+    # `QAPipelineTests` is not working well with slow tokenizers (for some models) and we don't want to touch the file
+    # `src/transformers/data/processors/squad.py` (where this test fails for this model)
+    def is_pipeline_test_to_skip(
+        self, pipeline_test_casse_name, config_class, model_architecture, tokenizer_name, processor_name
+    ):
+        if pipeline_test_casse_name == "QAPipelineTests" and not tokenizer_name.endswith("Fast"):
+            return True
+
+        return False
 
     def _create_and_check_torch_fx_tracing(self, config, inputs_dict, output_loss=False):
         if not is_torch_fx_available() or not self.fx_compatible:
@@ -893,7 +903,7 @@ class T5EncoderOnlyModelTester:
         # For common tests
         use_attention_mask=True,
         hidden_size=32,
-        num_hidden_layers=5,
+        num_hidden_layers=2,
         num_attention_heads=4,
         d_ff=37,
         relative_attention_num_buckets=8,
@@ -1045,15 +1055,30 @@ class T5ModelFp16Tests(unittest.TestCase):
         r"""
         A test to check whether the argument `keep_in_fp32_modules` correctly does its job
         """
-        # Load without using `accelerate`
-        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16)
-        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
-        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+        orig_import = __import__
+        accelerate_mock = unittest.mock.Mock()
 
-        # Load without in bf16
-        model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16)
-        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
-        self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
+        # mock import of accelerate
+        def import_accelerate_mock(name, *args, **kwargs):
+            if name == "accelerate":
+                if accelerate_available:
+                    return accelerate_mock
+                else:
+                    raise ImportError
+            return orig_import(name, *args, **kwargs)
+
+        # Load without using `accelerate`
+        with unittest.mock.patch("builtins.__import__", side_effect=import_accelerate_mock):
+            accelerate_available = False
+
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.float16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.float32)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.float16)
+
+            # Load without in bf16
+            model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wo.weight.dtype == torch.bfloat16)
+            self.assertTrue(model.decoder.block[0].layer[2].DenseReluDense.wi.weight.dtype == torch.bfloat16)
 
         # Load using `accelerate` in bf16
         model = T5ForConditionalGeneration.from_pretrained("t5-small", torch_dtype=torch.bfloat16, device_map="auto")

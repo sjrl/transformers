@@ -32,6 +32,7 @@ from transformers.convert_slow_tokenizer import convert_slow_tokenizer
 from transformers.testing_utils import (
     get_tests_dir,
     nested_simplify,
+    require_jinja,
     require_sentencepiece,
     require_tokenizers,
     require_torch,
@@ -52,6 +53,8 @@ if is_torch_available():
 @require_tokenizers
 class LlamaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
     tokenizer_class = LlamaTokenizer
+    rust_tokenizer_class = LlamaTokenizerFast
+
     test_rust_tokenizer = False
     test_sentencepiece = True
     from_pretrained_kwargs = {}
@@ -63,6 +66,10 @@ class LlamaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         tokenizer = LlamaTokenizer(SAMPLE_VOCAB, keep_accents=True)
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.save_pretrained(self.tmpdirname)
+
+    def get_tokenizers(self, **kwargs):
+        kwargs.update({"pad_token": "<PAD>"})
+        return super().get_tokenizers(**kwargs)
 
     def test_full_tokenizer(self):
         tokenizer = LlamaTokenizer(SAMPLE_VOCAB, keep_accents=True)
@@ -293,6 +300,14 @@ class LlamaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             pickled_tokenizer = pickle.dumps(tokenizer)
         pickle.loads(pickled_tokenizer)
 
+    @unittest.skip("worker 'gw4' crashed on CI, passing locally.")
+    def test_pickle_subword_regularization_tokenizer(self):
+        pass
+
+    @unittest.skip("worker 'gw4' crashed on CI, passing locally.")
+    def test_subword_regularization_tokenizer(self):
+        pass
+
 
 @require_torch
 @require_sentencepiece
@@ -300,7 +315,7 @@ class LlamaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 class LlamaIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        checkpoint_name = "hf-internal-testing/llama-tokenizer"
+        checkpoint_name = "hf-internal-testing/llama-tokenizer-non-normalized"
         cls.tokenizer: LlamaTokenizer = LlamaTokenizer.from_pretrained(checkpoint_name)
         cls.rust_tokenizer = LlamaTokenizerFast.from_pretrained(checkpoint_name)
         return cls
@@ -499,6 +514,100 @@ class LlamaIntegrationTest(unittest.TestCase):
 
                 self.assertEqual(decoded1, decoded2)
 
+    def test_special_token_special_word(self):
+        # the word inform should be split as ['in', 'form']
+        tokenizer = LlamaTokenizer.from_pretrained("huggyllama/llama-7b", legacy=False)
+        tokenizer.add_tokens(["<REPR_END>"], special_tokens=False)
+        out1 = tokenizer.decode(
+            tokenizer.encode("<REPR_END>inform", add_special_tokens=False), spaces_between_special_tokens=False
+        )
+        self.assertEqual(out1, "<REPR_END>inform")
+        out2 = tokenizer.decode(
+            tokenizer.encode("<REPR_END>inform", add_special_tokens=False), spaces_between_special_tokens=True
+        )
+        # decoding strips the added prefix space.
+        self.assertEqual(out2, "<REPR_END> inform")
+        input_ids = tokenizer.encode("<REPR_END>inform", add_special_tokens=False)
+        self.assertEqual(input_ids, [29871, 32000, 262, 689])  # 29871 is the spiece underline, '▁' added as it should
+
+        out2 = tokenizer.decode(
+            tokenizer.encode(" <REPR_END> inform", add_special_tokens=False), spaces_between_special_tokens=False
+        )
+        # TODO @ArthurZ currently we strip left and right, so this will not keep the spaces
+        self.assertEqual(out2, "<REPR_END>inform")
+
+        ### Let's make sure decoding does not add extra spaces here and there
+        # TODO @ArthurZ this should be affected by the lstrip/rstrip/single word /normalize refactoring
+        # Since currently we always strip left and right of the token, results are as such
+        input_ids = tokenizer.encode("<s> Hello<s>how", add_special_tokens=False)
+        self.assertEqual(input_ids, [1, 15043, 1, 3525])
+        tokens = tokenizer.tokenize("<s> Hello<s>how", add_special_tokens=False)
+        self.assertEqual(tokens, ["<s>", "▁Hello", "<s>", "how"])
+        decoded_tokens = tokenizer.decode(input_ids)
+        self.assertEqual(decoded_tokens, "<s> Hello<s>how")
+
+        # Let's make sure that if there are any spaces, we don't remove them!
+        input_ids = tokenizer.encode(" <s> Hello<s> how", add_special_tokens=False)
+        self.assertEqual(input_ids, [259, 1, 15043, 1, 920])
+        tokens = tokenizer.tokenize(" <s> Hello<s> how", add_special_tokens=False)
+        self.assertEqual(tokens, ["▁▁", "<s>", "▁Hello", "<s>", "▁how"])
+        decoded_tokens = tokenizer.decode(input_ids)
+        self.assertEqual(decoded_tokens, " <s> Hello<s> how")
+
+    def test_some_edge_cases(self):
+        tokenizer = LlamaTokenizer.from_pretrained("huggyllama/llama-7b", legacy=False)
+
+        sp_tokens = tokenizer.sp_model.encode("<s>>", out_type=str)
+        self.assertEqual(sp_tokens, ["<", "s", ">>"])
+        tokens = tokenizer.tokenize("<s>>")
+        self.assertNotEqual(sp_tokens, tokens)
+        self.assertEqual(tokens, ["<s>", ">"])
+
+        tokens = tokenizer.tokenize("")
+        self.assertEqual(tokens, [])
+        self.assertEqual(tokens, tokenizer.sp_model.encode("", out_type=str))
+
+        tokens = tokenizer.tokenize(" ")
+        self.assertEqual(tokens, ["▁▁"])
+        # a dummy prefix space is not added by the sp_model as it was de-activated
+        self.assertEqual(tokens, tokenizer.sp_model.encode("  ", out_type=str))
+
+        tokens = tokenizer.tokenize("▁")
+        self.assertEqual(tokens, ["▁▁"])
+        # a dummy prefix space is not added by the sp_model as it was de-activated
+        self.assertEqual(tokens, tokenizer.sp_model.encode("▁▁", out_type=str))
+
+        tokens = tokenizer.tokenize(" ▁")
+        self.assertEqual(tokens, ["▁▁▁"])
+        # a dummy prefix space is not added by the sp_model as it was de-activated
+        self.assertEqual(tokens, tokenizer.sp_model.encode("▁▁▁", out_type=str))
+
+    @require_jinja
+    def test_tokenization_for_chat(self):
+        tokenizer = LlamaTokenizer.from_pretrained("huggyllama/llama-7b", legacy=False)
+
+        test_chats = [
+            [{"role": "system", "content": "You are a helpful chatbot."}, {"role": "user", "content": "Hello!"}],
+            [
+                {"role": "system", "content": "You are a helpful chatbot."},
+                {"role": "user", "content": "Hello!"},
+                {"role": "assistant", "content": "Nice to meet you."},
+            ],
+            [{"role": "user", "content": "Hello!"}],
+        ]
+        # Matt: The third test case tests the default system message, but if this is ever changed in the
+        #       class/repo code then that test will fail, and the case will need to be updated.
+        tokenized_chats = [tokenizer.apply_chat_template(test_chat) for test_chat in test_chats]
+        # fmt: off
+        expected_tokens = [
+            [1, 29961, 25580, 29962, 3532, 14816, 29903, 6778, 13, 3492, 526, 263, 8444, 13563, 7451, 29889, 13, 29966, 829, 14816, 29903, 6778, 13, 13, 10994, 29991, 518, 29914, 25580, 29962],
+            [1, 29961, 25580, 29962, 3532, 14816, 29903, 6778, 13, 3492, 526, 263, 8444, 13563, 7451, 29889, 13, 29966, 829, 14816, 29903, 6778, 13, 13, 10994, 29991, 518, 29914, 25580, 29962, 20103, 304, 5870, 366, 29889, 29871, 2],
+            [1, 29961, 25580, 29962, 3532, 14816, 29903, 6778, 13, 3492, 526, 263, 8444, 29892, 3390, 1319, 322, 15993, 20255, 29889, 29849, 1234, 408, 1371, 3730, 408, 1950, 29892, 1550, 1641, 9109, 29889, 3575, 6089, 881, 451, 3160, 738, 10311, 1319, 29892, 443, 621, 936, 29892, 11021, 391, 29892, 7916, 391, 29892, 304, 27375, 29892, 18215, 29892, 470, 27302, 2793, 29889, 3529, 9801, 393, 596, 20890, 526, 5374, 635, 443, 5365, 1463, 322, 6374, 297, 5469, 29889, 13, 13, 3644, 263, 1139, 947, 451, 1207, 738, 4060, 29892, 470, 338, 451, 2114, 1474, 16165, 261, 296, 29892, 5649, 2020, 2012, 310, 22862, 1554, 451, 1959, 29889, 960, 366, 1016, 29915, 29873, 1073, 278, 1234, 304, 263, 1139, 29892, 3113, 1016, 29915, 29873, 6232, 2089, 2472, 29889, 13, 29966, 829, 14816, 29903, 6778, 13, 13, 10994, 29991, 518, 29914, 25580, 29962]
+        ]
+        # fmt: on
+        for tokenized_chat, expected_tokens in zip(tokenized_chats, expected_tokens):
+            self.assertListEqual(tokenized_chat, expected_tokens)
+
 
 @require_sentencepiece
 @require_tokenizers
@@ -510,10 +619,7 @@ class CommonSpmIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tokenizer = LlamaTokenizer(SAMPLE_VOCAB, extra_ids=0, add_bos_token=False, legacy=False)
-        tokenizer.add_special_tokens({"additional_special_tokens": ["<s>"]})
-        tokenizer._create_trie(tokenizer.all_special_tokens)
-        # TODO ArthurZ the above is necessary as addedTokens / intialization sucks. Trie is not correctly created
-        # So the extra ids are split....
+        tokenizer.add_special_tokens({"additional_special_tokens": [AddedToken("<s>", rstrip=False, lstrip=False)]})
         cls.tokenizer = tokenizer
         return cls
 
@@ -523,9 +629,21 @@ class CommonSpmIntegrationTests(unittest.TestCase):
         input_ids = self.tokenizer.encode(". Hello")
         self.assertEqual(input_ids, [7, 4, 156, 86, 20])
         sp_encode = self.tokenizer.sp_model.encode(". Hello")
-        self.assertEqual(input_ids, sp_encode)
+        self.assertEqual(input_ids, [7] + sp_encode)
         tokens = self.tokenizer.tokenize(". Hello")
         self.assertEqual(tokens, ["▁", ".", "▁He", "ll", "o"])
+
+        tokens = self.tokenizer.tokenize("")
+        self.assertEqual(tokens, [])
+        self.assertEqual(tokens, self.tokenizer.sp_model.encode("", out_type=str))
+
+        tokens = self.tokenizer.tokenize(" ")
+        self.assertEqual(tokens, [])
+        self.assertEqual(tokens, self.tokenizer.sp_model.encode(" ", out_type=str))
+
+        tokens = self.tokenizer.tokenize("▁")
+        self.assertEqual(tokens, [])
+        self.assertEqual(tokens, self.tokenizer.sp_model.encode("▁", out_type=str))
 
     def test_remove_extra_whitespaces(self):
         # make sure the extra spaces are eaten. Since the sample vocab does not have
@@ -534,7 +652,7 @@ class CommonSpmIntegrationTests(unittest.TestCase):
         input_ids = self.tokenizer.encode("       . Hello")
         self.assertEqual(input_ids, [7, 4, 156, 86, 20])
         sp_encode = self.tokenizer.sp_model.encode("       . Hello")
-        self.assertEqual(input_ids, sp_encode)
+        self.assertEqual(input_ids, [7] + sp_encode)
         tokens = self.tokenizer.tokenize(" . Hello")
         self.assertEqual(tokens, ["▁", ".", "▁He", "ll", "o"])
 
@@ -542,7 +660,11 @@ class CommonSpmIntegrationTests(unittest.TestCase):
         input_ids = self.tokenizer.encode("▁He is not")
         self.assertEqual(input_ids, [156, 46, 44])
         tokens = self.tokenizer.tokenize("▁He is not")
-        sp_encode = self.tokenizer.sp_model.encode("▁He is not")
+        sp_encode = [
+            self.tokenizer.sp_model.piece_to_id("▁He"),
+            self.tokenizer.sp_model.piece_to_id("▁is"),
+            self.tokenizer.sp_model.piece_to_id("▁not"),
+        ]
         self.assertEqual(input_ids, sp_encode)
         self.assertEqual(tokens, ["▁He", "▁is", "▁not"])  # no extra space added
 
