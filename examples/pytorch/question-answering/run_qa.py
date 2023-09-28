@@ -890,7 +890,7 @@ def main(raw_args=None):
             new_logits = (logits[0], logits[1])
         else:
             raise ValueError("Error in preprocess_logits_for_metrics")
-        return new_logits, labels
+        return new_logits
 
     # Initialize our Trainer
     trainer = QuestionAnsweringTrainer(
