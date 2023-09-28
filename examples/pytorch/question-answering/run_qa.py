@@ -883,6 +883,15 @@ def main(raw_args=None):
     if model_args.use_lora:
         callbacks.extend([SavePeftModel])
 
+    def preprocess_logits_for_metrics(logits, labels):
+        if len(logits) == 2:
+            new_logits = logits
+        elif len(logits) == 3:
+            new_logits = (logits[0], logits[1])
+        else:
+            raise ValueError("Error in preprocess_logits_for_metrics")
+        return new_logits, labels
+
     # Initialize our Trainer
     trainer = QuestionAnsweringTrainer(
         model=model,
@@ -895,6 +904,7 @@ def main(raw_args=None):
         post_process_function=post_processing_function,
         compute_metrics=compute_metrics,
         callbacks=callbacks,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
     # Training
