@@ -1,25 +1,21 @@
 #!/bin/bash
 
-# --model_name_or_path EleutherAI/pythia-410m \
-# --model_name_or_path EleutherAI/pythia-160m \
-# --model_name_or_path facebook/opt-350m \
-# --model_name_or_path facebook/opt-125m \
-# --model_name_or_path bigscience/bloomz-560m \
-mkdir -p ./experiments/"${1}-encoder"/"$2"
+#mkdir -p ./experiments/"${1}-encoder"/"$2"
+mkdir -p ./experiments/"${1}"/"$2"
 #nohup python run_qa.py \
 python run_qa.py \
   --model_name_or_path google/"$1" \
   --dataset_name squad_v2 \
-  --output_dir experiments/"${1}-encoder"/"$2"/model/ \
+  --output_dir experiments/"${1}"/"$2"/model/ \
   --version_2_with_negative True \
   --max_seq_length 512 \
   --doc_stride 128 \
   --max_answer_length 100 \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 12 \
+  --per_device_train_batch_size 4 \
   --per_device_eval_batch_size 8 \
-  --gradient_accumulation_steps 8 \
+  --gradient_accumulation_steps 16 \
   --learning_rate 1e-5 \
   --lr_scheduler_type linear \
   --warmup_ratio 0.10 \
@@ -37,8 +33,9 @@ python run_qa.py \
   --optim adamw_bnb_8bit \
   --tf32 True \
   --bf16 \
+  --torch_dtype bfloat16 \
   --pad_to_max_length False \
-  --gradient_checkpointing True > experiments/"${1}-encoder"/"$2"/run.log 2>&1 &
+  --gradient_checkpointing True > experiments/"${1}"/"$2"/run.log 2>&1 &
   #--torch_dtype float16 \
   #--tf32 True \
   #--bf16 \
