@@ -14,8 +14,10 @@ def get_dataset_metrics(
 ) -> str:
     with open(metrics_path) as f1:
         metrics = json.load(f1)
-    metrics_readme = f"""
-  - task:
+    eval_exact = metrics.get("eval_exact")
+    if eval_exact is None:
+        eval_exact = metrics["eval_exact_match"]
+    metrics_readme = f"""- task:
       type: question-answering
       name: Question Answering
     dataset:
@@ -25,7 +27,7 @@ def get_dataset_metrics(
       split: {dataset_split}
     metrics:
     - type: exact_match
-      value: {metrics["eval_exact"]:.3f}
+      value: {eval_exact:.3f}
       name: Exact Match
     - type: f1
       value: {metrics["eval_f1"]:.3f}
@@ -99,35 +101,34 @@ def create_model_card(model_path: str, output_path: Optional[str] = None) -> Non
     )
     squadshifts_amazon = get_dataset_metrics(
         metrics_path=os.path.join(model_path, "eval_squadshifts_amazon", "all_results.json"),
-        dataset_name="squadshifts",
+        dataset_name="squadshifts amazon",
         dataset_type="squadshifts",
         dataset_config="amazon",
         dataset_split="test",
     )
     squadshifts_new_wiki = get_dataset_metrics(
         metrics_path=os.path.join(model_path, "eval_squadshifts_new_wiki", "all_results.json"),
-        dataset_name="squadshifts",
+        dataset_name="squadshifts new_wiki",
         dataset_type="squadshifts",
         dataset_config="new_wiki",
         dataset_split="test",
     )
     squadshifts_nyt = get_dataset_metrics(
         metrics_path=os.path.join(model_path, "eval_squadshifts_nyt", "all_results.json"),
-        dataset_name="squadshifts",
+        dataset_name="squadshifts nyt",
         dataset_type="squadshifts",
         dataset_config="nyt",
         dataset_split="test",
     )
     squadshifts_reddit = get_dataset_metrics(
         metrics_path=os.path.join(model_path, "eval_squadshifts_reddit", "all_results.json"),
-        dataset_name="squadshifts",
+        dataset_name="squadshifts reddit",
         dataset_type="squadshifts",
         dataset_config="reddit",
         dataset_split="test",
     )
 
-    template = f"""
----
+    template = f"""---
 language:
 - en
 license: cc-by-4.0
@@ -178,12 +179,12 @@ model_name = "deepset/{model_name}"
 
 # a) Using pipelines
 nlp = pipeline('question-answering', model=model_name, tokenizer=model_name)
-qa_input = {
+qa_input = {{
 'question': 'Where do I live?',
 'context': 'My name is Sarah and I live in London'
-}
+}}
 res = nlp(qa_input)
-# {'score': 0.984, 'start': 30, 'end': 37, 'answer': ' London'}
+# {{'score': 0.984, 'start': 30, 'end': 37, 'answer': ' London'}}
 
 # b) Load model & tokenizer
 model = AutoModelForQuestionAnswering.from_pretrained(model_name)
@@ -208,7 +209,7 @@ answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
 
 ```bash
 # Squad v2
-{
+{{
 "eval_HasAns_exact": 84.83468286099865,
     "eval_HasAns_f1": 90.48374860633226,
     "eval_HasAns_total": 5928,
@@ -226,17 +227,17 @@ answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
     "eval_samples_per_second": 19.179,
     "eval_steps_per_second": 0.799,
     "eval_total": 11873
-}
+}}
 
 # Squad
-{
+{{
 "eval_exact_match": 89.29044465468307,
     "eval_f1": 94.9846365606959,
     "eval_runtime": 553.7132,
     "eval_samples": 10618,
     "eval_samples_per_second": 19.176,
     "eval_steps_per_second": 0.8
-}
+}}
 ```
 
 {training_procedure}
@@ -249,7 +250,7 @@ answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
 - Tokenizers 0.13.3
 """
 
-    with open(os.path.join(output_path, "README.md")) as f1:
+    with open(os.path.join(output_path, "README.md"), "w") as f1:
         f1.write(template)
 
 
