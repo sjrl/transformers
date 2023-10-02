@@ -53,8 +53,8 @@ if __name__ == "__main__":
                 "--tf32", "True",
                 "--dataloader_num_workers", "6",
                 "--preprocessing_num_workers", "6",
-                "--eval_accumulation_steps", "2",
+                "--eval_accumulation_steps", "32",
                 "--overwrite_output_dir", "False",
-                "--overwrite_cache", "True",
+                #"--overwrite_cache", "True",
             ] + extra_args
             main(raw_args=raw_args)
