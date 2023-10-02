@@ -40,6 +40,10 @@ def get_training_procedure(training_args_file: str) -> str:
         return "TRAINING_PROCEDURE"
 
     training_args = torch.load(training_args_file)
+    try:
+        warmup_ratio = training_args.lr_scheduler_warmup_ratio
+    except AttributeError:
+        warmup_ratio = training_args.warmup_ratio
     template = f"""## Training procedure
 
 ### Training hyperparameters
@@ -53,7 +57,7 @@ The following hyperparameters were used during training:
 - total_train_batch_size: {training_args.train_batch_size * training_args.gradient_accumulation_steps}
 - optimizer: Adam with betas=({training_args.adam_beta1:.1f},{training_args.adam_beta2:.3f}) and epsilon={training_args.adam_epsilon:.0E}
 - lr_scheduler_type: {training_args.lr_scheduler_type}
-- lr_scheduler_warmup_ratio: {training_args.lr_scheduler_warmup_ratio:.1f}
+- lr_scheduler_warmup_ratio: {warmup_ratio:.1f}
 - num_epochs: {training_args.num_train_epochs:.1f}"""
     return template
 
