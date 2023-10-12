@@ -62,16 +62,21 @@ The following hyperparameters were used during training:
     return template
 
 
-def create_model_card(model_path: str, output_path: Optional[str] = None) -> None:
+def create_model_card(model_path: str, output_path: Optional[str] = None, train_dataset: Optional[str] = None) -> None:
     config_file = os.path.join(model_path, "config.json")
     if os.path.isfile(config_file):
         with open(os.path.join(model_path, "config.json")) as f1:
             config = json.load(f1)
         base_model = config["_name_or_path"]
         model_name = f"deepset/{base_model.split('/')[-1]}"
+        transformers_version = str(config["transformers_version"])
     else:
         base_model = "BASE_MODEL"
         model_name = "MODEL_NAME"
+        transformers_version = "TRANSFORMERS_VERSION"
+
+    if train_dataset is None:
+        train_dataset = "TRAINING DATASET"
 
     training_procedure = get_training_procedure(training_args_file=os.path.join(model_path, "training_args.bin"))
 
@@ -166,8 +171,8 @@ This is the [{base_model}](https://huggingface.co/{base_model}) model, fine-tune
 **Language model:** {base_model}  
 **Language:** English  
 **Downstream-task:** Extractive QA  
-**Training data:** SQuAD 2.0  
-**Eval data:** SQuAD 2.0  
+**Training data:** {train_dataset}  
+**Eval data:** [SQuAD 2.0](https://huggingface.co/datasets/squad_v2), [SQuAD](https://huggingface.co/datasets/squad), [AdversarialQA](https://huggingface.co/datasets/adversarial_qa), [SquadShifts](https://huggingface.co/datasets/squad_adversarial), [SQuAD Adversarial](https://huggingface.co/datasets/squad_adversarial) 
 **Infrastructure**: 1x NVIDIA A10G  
 
 ## Model Usage
@@ -209,46 +214,11 @@ answer = tokenizer.decode(tokenizer.convert_tokens_to_ids(answer_tokens))
 # 'London'
 ```
 
-## Metrics
-
-```bash
-# Squad v2
-{{
-"eval_HasAns_exact": 84.83468286099865,
-    "eval_HasAns_f1": 90.48374860633226,
-    "eval_HasAns_total": 5928,
-    "eval_NoAns_exact": 91.0681244743482,
-    "eval_NoAns_f1": 91.0681244743482,
-    "eval_NoAns_total": 5945,
-    "eval_best_exact": 87.95586625115808,
-    "eval_best_exact_thresh": 0.0,
-    "eval_best_f1": 90.77635490089573,
-    "eval_best_f1_thresh": 0.0,
-    "eval_exact": 87.95586625115808,
-    "eval_f1": 90.77635490089592,
-    "eval_runtime": 623.1333,
-    "eval_samples": 11951,
-    "eval_samples_per_second": 19.179,
-    "eval_steps_per_second": 0.799,
-    "eval_total": 11873
-}}
-
-# Squad
-{{
-"eval_exact_match": 89.29044465468307,
-    "eval_f1": 94.9846365606959,
-    "eval_runtime": 553.7132,
-    "eval_samples": 10618,
-    "eval_samples_per_second": 19.176,
-    "eval_steps_per_second": 0.8
-}}
-```
-
 {training_procedure}
 
 ### Framework versions
 
-- Transformers 4.30.0.dev0
+- Transformers {transformers_version}
 - Pytorch 2.0.1+cu117
 - Datasets 2.12.0
 - Tokenizers 0.13.3
