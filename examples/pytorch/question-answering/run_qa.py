@@ -256,6 +256,15 @@ class DataTrainingArguments:
             )
         },
     )
+    do_multi_eval: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use multiple predefined separate evaluation sets during training "
+                "(SQuAD V2, SquadShifts, AdversarialQA, SQuAD Adversarial)"
+            )
+        }
+    )
 
     def __post_init__(self):
         if (
@@ -400,6 +409,27 @@ def main(raw_args=None):
     if training_args.do_eval and "validation" not in raw_datasets:
         raw_datasets["validation"] = raw_datasets["test"]
 
+    # Load specific eval datasets
+    if data_args.do_multi_eval:
+        raw_eval_dataset_dict = {}
+        all_eval_datasets = {
+            "squad_v2": {"config": None, "split": "validation"},
+            # "squadshifts": ["amazon", "new_wiki", "nyt", "reddit"],
+            "squadshifts": {"config": "amazon", "split": "test"},
+            "adversarial_qa": {"config": "adversarialQA", "split": "validation"},
+            "squad_adversarial": {"config": "AddOneSent", "split": "validation"},
+        }
+        for name, details in all_eval_datasets.items():
+            raw_eval_dataset_dict[name] = load_dataset(
+                name,
+                details["config"],
+                cache_dir=model_args.cache_dir,
+                token=model_args.token,
+                split=details["split"],
+            )
+    else:
+        raw_eval_dataset_dict = None
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -466,7 +496,7 @@ def main(raw_args=None):
     }
     if model_args.load_in_8bit:
         logger.info("Loading in 8bit")
-    #model = T5EncoderForQuestionAnswering.from_pretrained(
+
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -775,26 +805,30 @@ def main(raw_args=None):
     if training_args.do_eval:
         if "validation" not in raw_datasets:
             raise ValueError("--do_eval requires a validation dataset")
-        eval_examples = raw_datasets["validation"]
-        if data_args.max_eval_samples is not None:
-            # We will select sample from whole data
-            eval_examples = eval_examples.shuffle(seed=42)
-            max_eval_samples = min(len(eval_examples), data_args.max_eval_samples)
-            eval_examples = eval_examples.select(range(max_eval_samples))
-        # Validation Feature Creation
-        with training_args.main_process_first(desc="validation dataset map pre-processing"):
-            eval_dataset = eval_examples.map(
-                prepare_validation_features,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on validation dataset",
-            )
-        if data_args.max_eval_samples is not None:
-            # During Feature creation dataset samples might increase, we will select required samples again
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+        eval_dataset_dict = {}
+        if raw_eval_dataset_dict is None:
+            raw_eval_dataset_dict = {data_args.dataset_name: raw_datasets["validation"]}
+        for eval_name, eval_examples in raw_eval_dataset_dict.items():
+            if data_args.max_eval_samples is not None:
+                # We will select sample from whole data
+                eval_examples = eval_examples.shuffle(seed=42)
+                max_eval_samples = min(len(eval_examples), data_args.max_eval_samples)
+                eval_examples = eval_examples.select(range(max_eval_samples))
+            # Validation Feature Creation
+            with training_args.main_process_first(desc="validation dataset map pre-processing"):
+                eval_dataset = eval_examples.map(
+                    prepare_validation_features,
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    remove_columns=column_names,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc="Running tokenizer on validation dataset",
+                )
+            if data_args.max_eval_samples is not None:
+                # During Feature creation dataset samples might increase, we will select required samples again
+                max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+                eval_dataset = eval_dataset.select(range(max_eval_samples))
+            eval_dataset_dict[eval_name] = eval_dataset
 
     if training_args.do_predict:
         if "test" not in raw_datasets:
@@ -897,7 +931,7 @@ def main(raw_args=None):
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
+        eval_dataset=eval_dataset_dict if training_args.do_eval else None,
         eval_examples=eval_examples if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
@@ -934,8 +968,9 @@ def main(raw_args=None):
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        # TODO Not super relevant but needs to be updated to support multiple eval_dataset_dict
+        # max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        # metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
