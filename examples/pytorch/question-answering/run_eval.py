@@ -19,7 +19,7 @@ if __name__ == "__main__":
         "squadshifts": ["amazon", "new_wiki", "nyt", "reddit"],
         "adversarial_qa": ["adversarialQA"],
         "squad_adversarial": ["AddOneSent"],
-        #"mrqa": [None],
+        # "mrqa": [None],
     }
 
     base_output_path = args.output_path
